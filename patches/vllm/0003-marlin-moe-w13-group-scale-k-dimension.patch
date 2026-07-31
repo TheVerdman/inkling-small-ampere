@@ -1,0 +1,95 @@
+diff --git a/tests/kernels/quantization/test_marlin_tile_padding.py b/tests/kernels/quantization/test_marlin_tile_padding.py
+--- a/tests/kernels/quantization/test_marlin_tile_padding.py
++++ b/tests/kernels/quantization/test_marlin_tile_padding.py
+@@ -112,6 +112,68 @@ def test_marlin_pad_helpers_shapes():
+     assert padded.shape == (1, padded_n)
+ 
+ 
++def test_marlin_moe_w13_scale_permutation_uses_hidden_size(monkeypatch):
++    from vllm.model_executor.layers.fused_moe.oracle import int_wna16
++
++    num_experts = 1
++    hidden_size = 512
++    intermediate_size = 128
++    group_size = 128
++    num_bits = 8
++    pack_factor = 32 // num_bits
++    calls = []
++
++    def fake_permute_scales(
++        *,
++        s,
++        size_k,
++        size_n,
++        group_size,
++        is_a_8bit=False,
++    ):
++        calls.append(
++            {
++                "size_k": size_k,
++                "size_n": size_n,
++                "group_size": group_size,
++                "is_a_8bit": is_a_8bit,
++            }
++        )
++        return s
++
++    monkeypatch.setattr(int_wna16, "marlin_moe_permute_scales", fake_permute_scales)
++    monkeypatch.setattr(
++        int_wna16.ops,
++        "gptq_marlin_moe_repack",
++        lambda qweight, *args, **kwargs: qweight,
++    )
++    layer = SimpleNamespace(intermediate_size_per_partition=intermediate_size)
++    int_wna16._process_weights_marlin(
++        layer=layer,
++        input_dtype=None,
++        num_bits=num_bits,
++        pack_factor=pack_factor,
++        group_size=group_size,
++        actorder=None,
++        w13_qweight=torch.zeros(
++            num_experts, hidden_size // pack_factor, 2 * intermediate_size
++        ),
++        w2_qweight=torch.zeros(
++            num_experts, intermediate_size // pack_factor, hidden_size
++        ),
++        w13_scales=torch.ones(
++            num_experts, hidden_size // group_size, 2 * intermediate_size
++        ),
++        w2_scales=torch.ones(
++            num_experts, intermediate_size // group_size, hidden_size
++        ),
++        w13_g_idx=torch.empty(num_experts, hidden_size, dtype=torch.int32),
++        w2_g_idx=torch.empty(num_experts, intermediate_size, dtype=torch.int32),
++    )
++
++    assert calls[0]["size_k"] == hidden_size
++
++
+ # Rank-local MoE intermediate sizes. group<=0 / 32 with a non-multiple-of-64
+ # size is where tile padding triggers; 64/128 are already tile-aligned.
+ MOE_INTERMEDIATE_SIZES = [64, 96, 100, 176, 192, 256, 2816]
+diff --git a/vllm/model_executor/layers/fused_moe/oracle/int_wna16.py b/vllm/model_executor/layers/fused_moe/oracle/int_wna16.py
+--- a/vllm/model_executor/layers/fused_moe/oracle/int_wna16.py
++++ b/vllm/model_executor/layers/fused_moe/oracle/int_wna16.py
+@@ -587,6 +587,10 @@ def _process_weights_marlin(
+         )
+ 
+     # --- Repack weights ---
++    # Scale permutation must distinguish channelwise/single-group scales from
++    # grouped scales using the logical GEMM K (the hidden dimension for w13),
++    # not the TP-local MoE intermediate dimension.
++    w13_size_k = marlin_w13_qweight.shape[1] * pack_factor
+     marlin_w13_qweight = ops.gptq_marlin_moe_repack(
+         marlin_w13_qweight,
+         w13_g_idx_sort_indices,
+@@ -607,7 +611,7 @@ def _process_weights_marlin(
+     # --- Permute scales ---
+     marlin_w13_scales = marlin_moe_permute_scales(
+         s=marlin_w13_scales,
+-        size_k=layer.intermediate_size_per_partition,
++        size_k=w13_size_k,
+         size_n=marlin_w13_scales.shape[2],
+         group_size=group_size,
+         is_a_8bit=is_a_8bit,

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "w8a16-fit-first-v1",
+  "description": "Storage lower bound: quantize every observed candidate matrix and omit optional MTP. This includes modules that the pinned Inkling runtime cannot currently load quantized.",
+  "include_mtp": false,
+  "quantization": {
+    "weight_bits": 8,
+    "activation_bits": 16,
+    "strategy": "group",
+    "group_size": 128,
+    "symmetric": true,
+    "scale_dtype": "BF16",
+    "scale_bytes": 2,
+    "zero_points": false,
+    "allocation_alignment_bytes": 256
+  },
+  "quantize_families": [
+    "audio",
+    "vision",
+    "token_embedding",
+    "output_head",
+    "attention_projection",
+    "routed_expert_up_gate",
+    "routed_expert_down",
+    "shared_expert_up_gate",
+    "shared_expert_down",
+    "dense_mlp_up_gate",
+    "dense_mlp_down"
+  ],
+  "exclude_layers": {},
+  "runtime_assessment": "incompatible-with-pinned-inkling-loader",
+  "runtime_notes": "The pinned runtime hard-codes a BF16 replicated embedding, BF16 shared sink experts, and unquantized multimodal towers. This profile is a lower bound, not a conversion candidate."
+}

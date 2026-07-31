@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "runtime-source-reference",
+  "status": "verified-static-blocker",
+  "vllm": {
+    "repository": "https://github.com/vllm-project/vllm.git",
+    "revision": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+    "image_manifest_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8"
+  },
+  "vllm_flash_attention": {
+    "repository": "https://github.com/vllm-project/flash-attention.git",
+    "revision": "caaa4eb59845388a20b1f435ecaafb4bd9517ad8",
+    "pin_source": "cmake/external_projects/vllm_flash_attn.cmake"
+  },
+  "source_files": [
+    {
+      "repository": "vllm-project/vllm",
+      "revision": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+      "path": "vllm/models/inkling/nvidia/ops/fa4_rel_attention.py",
+      "sha256": "e423390b30f8149f8ab1dedeab42f48ced6929d3bf10a273da65cd541a5498b0"
+    },
+    {
+      "repository": "vllm-project/vllm",
+      "revision": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+      "path": "cmake/external_projects/vllm_flash_attn.cmake",
+      "sha256": "87f3e294cc606fa49812c18ba9b2a87e724331bad1430c2e07341241e3a4c6a8"
+    },
+    {
+      "repository": "vllm-project/flash-attention",
+      "revision": "caaa4eb59845388a20b1f435ecaafb4bd9517ad8",
+      "path": "flash_attn/cute/interface.py",
+      "sha256": "d1559dec138a84261769f86eacc0b537c73b274e76257841ba740076d2e7b6ab"
+    },
+    {
+      "repository": "vllm-project/flash-attention",
+      "revision": "caaa4eb59845388a20b1f435ecaafb4bd9517ad8",
+      "path": "flash_attn/cute/flash_fwd.py",
+      "sha256": "083460ee1254165bebea3cfb6dadc53f12446f63c5268425a4f6a50658c69eaf"
+    }
+  ],
+  "confirmed_conditions": [
+    "Inkling's non-Blackwell path always passes a custom score_mod to vllm_flash_attn.",
+    "Inkling's serving attention call passes the bound KV-cache block table as page_table.",
+    "The pinned dependency rejects custom score_mod when the architecture major is 8.",
+    "The pinned dependency's SM80 forward path separately requires page_table to be absent."
+  ],
+  "conclusion": "The pinned Inkling relative-attention serving path cannot execute on A100 without an alternative backend or upstream kernel changes."
+}

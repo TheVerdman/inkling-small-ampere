@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "ampere-flex-relative-attention-spike",
+  "status": "verified-live-pass",
+  "source_project": "project-49b1b523-d248-434f-bd4",
+  "source_region": "us-central1",
+  "source_job_id": "7622444907373789184",
+  "source_job_display_name": "inkling-flex-attn-a100-20260730-232416",
+  "source_job_state": "JOB_STATE_SUCCEEDED",
+  "source_job_created_at": "2026-07-30T23:24:18.191740Z",
+  "source_job_started_at": "2026-07-30T23:26:04Z",
+  "source_job_ended_at": "2026-07-30T23:26:35Z",
+  "source_artifact_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/flex-attention/inkling-flex-attn-a100-20260730-232416.json",
+  "serving_image_manifest_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8",
+  "artifact": {
+    "path": "results/raw/inkling-flex-attn-a100-20260730-232416.json",
+    "bytes": 2968,
+    "sha256": "af94f2682e4d6ffdef32f7174bc9005462962a509c5257e38c025b9937739358"
+  },
+  "fixture": {
+    "devices": 4,
+    "cases_per_device": 2,
+    "modes": [
+      "global",
+      "local-window-16"
+    ],
+    "block_size": 16,
+    "block_table": [
+      2,
+      0,
+      1
+    ],
+    "sequence_length": 35,
+    "query_length": 3,
+    "query_heads": 8,
+    "kv_heads": 2,
+    "head_dim": 128,
+    "relative_extent": 64,
+    "dtype": "bfloat16",
+    "relative_bias_accumulation": "float32",
+    "oracle": "dense float32",
+    "max_abs_tolerance": 0.04
+  },
+  "observations": {
+    "cases_total": 8,
+    "cases_passed": 8,
+    "all_outputs_finite": true,
+    "worst_max_abs": 0.006369352340698242,
+    "worst_mean_abs": 0.0005439058295451105
+  },
+  "superseded_attempt": {
+    "source_job_id": "4688138643909378048",
+    "artifact_path": "results/raw/inkling-flex-attn-a100-20260730-232119.json",
+    "artifact_sha256": "07a0f9e4889a7e0f1bdeff040a9045036940710be40b15326e320667f64e74c3",
+    "result": "harness configuration failure before kernel launch",
+    "cause": "The standalone harness omitted vLLM's BLOCK_M=16 and BLOCK_N=16 options for a 16-token block mask."
+  },
+  "conclusion": "PyTorch FlexAttention is a viable SM80 kernel primitive for Inkling-style paged relative attention. Integration with vLLM metadata, cache binding, compilation reuse, and a complete Inkling layer remains to be proven."
+}

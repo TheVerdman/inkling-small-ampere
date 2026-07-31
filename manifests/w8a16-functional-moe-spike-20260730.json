@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "ampere-w8a16-functional-moe-spike",
+  "status": "verified-live-pass",
+  "source_project": "project-49b1b523-d248-434f-bd4",
+  "source_region": "us-central1",
+  "source_job_id": "3654773635660382208",
+  "source_job_display_name": "inkling-w8a16-moe-tp4-20260730-233223",
+  "source_job_state": "JOB_STATE_SUCCEEDED",
+  "source_job_created_at": "2026-07-30T23:32:25.088466Z",
+  "source_job_started_at": "2026-07-30T23:47:12Z",
+  "source_job_ended_at": "2026-07-30T23:48:43Z",
+  "source_artifact_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/w8a16-moe/inkling-w8a16-moe-tp4-20260730-233223.json",
+  "serving_image_manifest_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8",
+  "runtime_revision": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+  "artifact": {
+    "path": "results/raw/inkling-w8a16-moe-tp4-20260730-233223.json",
+    "bytes": 4731,
+    "sha256": "415741e10af7fcbf10e7b155bb326eb010625245e2c02025b010e9a33cf56642"
+  },
+  "fixture": {
+    "devices": 4,
+    "tokens": 32,
+    "hidden_size": 256,
+    "intermediate_size": 512,
+    "local_intermediate_size": 128,
+    "num_experts": 8,
+    "top_k": 2,
+    "weight_bits": 8,
+    "group_size": 128,
+    "activation_dtype": "bfloat16",
+    "sharding": "TP4 intermediate slices plus BF16 NCCL all-reduce",
+    "max_abs_tolerance": 0.05
+  },
+  "observations": {
+    "ranks_total": 4,
+    "ranks_passed": 4,
+    "all_outputs_finite": true,
+    "kernel_entrypoint": "fused_moe_kernel_gptq_awq",
+    "worst_kernel_max_abs_vs_dequantized_reference": 0.0017436742782592773,
+    "worst_quantization_max_abs_vs_bf16_reference": 0.003685563802719116
+  },
+  "superseded_attempt": {
+    "source_job_id": "8527668432475258880",
+    "source_job_display_name": "inkling-w8a16-moe-tp4-20260730-232752",
+    "source_job_state": "JOB_STATE_FAILED",
+    "source_job_created_at": "2026-07-30T23:27:54.106540Z",
+    "source_job_started_at": "2026-07-30T23:28:11Z",
+    "source_job_ended_at": "2026-07-30T23:29:42Z",
+    "artifact": {
+      "path": "results/raw/inkling-w8a16-moe-tp4-20260730-232752.json",
+      "bytes": 4672,
+      "sha256": "78450bcde90f49156a5df37206994c721ac502e863b350d2d6acf84470c8ef79"
+    },
+    "result": "numerical failure with 4.36848 max absolute kernel error",
+    "cause": "the fixture supplied signed two's-complement bytes, while scalar type uint8b128 requires signed INT8 values encoded with a +128 offset"
+  },
+  "conclusion": "The low-level vLLM W8A16 routed-MoE primitive executes a real INT8 expert kernel on all four A100 ranks and agrees with dequantized and BF16 references. The real InklingMoE loader, router, shared experts, and wrapper are covered by the higher-level Gate B layer experiment."
+}

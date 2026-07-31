@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "external-hardware-reference",
+  "status": "verified-local-copy",
+  "source_project": "project-49b1b523-d248-434f-bd4",
+  "source_job_id": "8664974044392587264",
+  "source_job_display_name": "heirloom-validate-quick-20260620-164906",
+  "source_artifact_prefix": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/heirloom/reference-runs/heirloom-validate-quick-20260620-164906",
+  "source_job_state": "JOB_STATE_SUCCEEDED",
+  "source_job_created_at": "2026-06-20T20:49:11.359860Z",
+  "source_job_started_at": "2026-06-20T20:52:50Z",
+  "source_job_ended_at": "2026-06-20T21:37:35Z",
+  "hardware_contract": {
+    "machine_type": "a2-ultragpu-4g",
+    "accelerator_type": "NVIDIA_A100_80GB",
+    "accelerator_count": 4
+  },
+  "observations": {
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "compute_capability": "8.0",
+    "memory_mib_per_device": 81920,
+    "memory_bytes_per_device": 85899345920,
+    "mig_disabled": true,
+    "all_pair_peer_access": true,
+    "all_pair_topology": "NV12",
+    "nvlink_links_per_device": 12,
+    "nvlink_reported_gb_per_second_per_link": 25,
+    "nccl_world_size": 4,
+    "nccl_expected_sum": 10.0,
+    "nccl_max_abs_error": 0.0
+  },
+  "local_files": [
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/gpu-info.txt",
+      "sha256": "88d429216187c532ea82ad974e62d3f62c055e5a551243e04d91ff525e3db7f5"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/gpu-smoke-device-0.json",
+      "sha256": "28e401d8dd44d3539854f43b9624f5d70b0b2e9d489803d61eb7e307eef4ea95"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/gpu-smoke-device-1.json",
+      "sha256": "1014c43deac6d943a7ce4c5403cd50c2e4f11d4599317169d6b8d3026c99edb6"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/gpu-smoke-device-2.json",
+      "sha256": "dffaf061ad9bc374a784ace8a13bece0366c22f71ed2500fadf6d26dc7eccaba"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/gpu-smoke-device-3.json",
+      "sha256": "6cc237193696b13a5b528ef2d6d2f3d498668d4357a747842f31f98e5eebce26"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/heirloom-gpu-topology.json",
+      "sha256": "05dfc66b4991be5ce7de05be11ef4771e231c83fcc9f604ce8519a3901b4cc49"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/launcher-report.json",
+      "sha256": "77b6cda984d6fda20fe6e2e8eb721758e0e6999bb3181b3c6df3152f969dc1ef"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/nccl-probe.json",
+      "sha256": "4e754e0b4aae1eb3ad04bb0397d8cfb210e47747e80097c81c2e7f1472a57484"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/nvidia-smi-gpu-bus-ids.csv",
+      "sha256": "41b834e0cb1a16404f67c53a2ba161bd548592e09e11daccdb4432edf396beee"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/nvidia-smi-nvlink.txt",
+      "sha256": "1089454634f4b05fe5d1659bf3b123a2256a43b29e4a479063866798845b007e"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/nvidia-smi-topo.txt",
+      "sha256": "abb186a665f53d1df099bf9adadb2b71798e18a6d930116fbb310bccc66bb2d6"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/nvidia-smi.txt",
+      "sha256": "f6869e9919fb346ace3d293115d6a20d0e417ca98788b101da4335f942e048fd"
+    },
+    {
+      "path": "results/raw/heirloom-a100-reference-20260620/summary.json",
+      "sha256": "7eb20131e427b9ad1a05f1eafe5fd5113b58d4474e6e4e667072be2a5e2b41f3"
+    }
+  ],
+  "limitations": [
+    "This run predates Inkling-Small and does not test the pinned vLLM image or Inkling kernels.",
+    "Physical HBM capacity and topology are reusable machine-type observations; CUDA allocation peaks remain environment-specific.",
+    "The reported NVIDIA driver was 535.288.01 and must not be substituted for the queued Inkling job's eventual driver/runtime report."
+  ]
+}

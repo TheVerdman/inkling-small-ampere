@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "a100-runtime-reconnaissance",
+  "status": "verified-live-result",
+  "source_project": "project-49b1b523-d248-434f-bd4",
+  "source_region": "us-central1",
+  "source_job_id": "7887664704179404800",
+  "source_job_display_name": "inkling-small-a100-recon-20260730-222737",
+  "source_job_state": "JOB_STATE_SUCCEEDED",
+  "source_job_created_at": "2026-07-30T22:27:38.209360Z",
+  "source_job_started_at": "2026-07-30T23:06:51Z",
+  "source_job_ended_at": "2026-07-30T23:07:52Z",
+  "source_artifact_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/recon/inkling-small-a100-recon-20260730-222737.json",
+  "hardware_contract": {
+    "machine_type": "a2-ultragpu-4g",
+    "accelerator_type": "NVIDIA_A100_80GB",
+    "accelerator_count": 4
+  },
+  "serving_image": {
+    "repository": "docker.io/vllm/vllm-openai",
+    "manifest_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8"
+  },
+  "artifact": {
+    "path": "results/raw/inkling-small-a100-recon-20260730-222737.json",
+    "bytes": 13505,
+    "sha256": "0cbdf882d64702a2f28b32911b269e6aacb3463611d369ab7292467e2a33335c"
+  },
+  "observations": {
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "compute_capability": "8.0",
+    "device_count": 4,
+    "torch_total_memory_bytes_per_device": 84987740160,
+    "torch_free_memory_bytes_after_init_per_device": 84544192512,
+    "multiprocessor_count_per_device": 108,
+    "python_version": "3.12.3",
+    "vllm_version": "0.26.0+cu129",
+    "torch_version": "2.11.0+cu129",
+    "torch_cuda_version": "12.9",
+    "nccl_version": "2.28.9",
+    "nccl_world_size": 4,
+    "nccl_expected_sum": 10.0,
+    "nccl_all_ranks_passed": true,
+    "w8a16_scheme_constructed": true,
+    "w8a16_minimum_compute_capability": 75,
+    "w8a16_weight_bits": 8,
+    "w8a16_group_size": 128,
+    "w8a16_symmetric": true,
+    "inkling_relative_attention_status": "failed",
+    "inkling_relative_attention_error_type": "NotImplementedError",
+    "inkling_relative_attention_error": "Custom user-provided score_mod is not supported on SM8x architectures."
+  },
+  "limitations": [
+    "The pinned vLLM image does not include nvidia-smi, so live topology and driver details were unavailable; those remain covered by the historical same-machine hardware manifest.",
+    "Constructing the W8A16 scheme proves capability gating and configuration only, not packed expert loading or INT8 kernel execution.",
+    "The probe downloads no model weights and does not measure full-model allocations, numerical quality, or performance."
+  ]
+}

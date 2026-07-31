@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/inkling-small-ampere/hardware-contract.schema.json",
+  "title": "Inkling-Small Ampere hardware contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_id",
+    "description",
+    "requirements"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "target_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operating_system",
+        "cpu",
+        "host_memory",
+        "gpu",
+        "storage",
+        "topology"
+      ],
+      "properties": {
+        "operating_system": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["system", "architecture"],
+          "properties": {
+            "system": {"type": "string"},
+            "architecture": {"type": "string"}
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["logical_count_min"],
+          "properties": {
+            "logical_count_min": {"type": "integer", "minimum": 1}
+          }
+        },
+        "host_memory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bytes_min"],
+          "properties": {
+            "bytes_min": {"type": "integer", "minimum": 1}
+          }
+        },
+        "gpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["count", "name_pattern", "memory_mib_each_min"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 1},
+            "name_pattern": {"type": "string", "minLength": 1},
+            "memory_mib_each_min": {"type": "integer", "minimum": 1}
+          }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bytes_total_min", "throughput_probe_required"],
+          "properties": {
+            "bytes_total_min": {"type": "integer", "minimum": 1},
+            "throughput_probe_required": {"type": "boolean"}
+          }
+        },
+        "topology": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["nvlink_required", "numa_inventory_required"],
+          "properties": {
+            "nvlink_required": {"type": "boolean"},
+            "numa_inventory_required": {"type": "boolean"}
+          }
+        }
+      }
+    }
+  }
+}
+

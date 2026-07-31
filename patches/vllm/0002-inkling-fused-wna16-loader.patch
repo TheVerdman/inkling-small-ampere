@@ -1,0 +1,189 @@
+diff --git a/tests/models/inkling/test_moe_weight_layout.py b/tests/models/inkling/test_moe_weight_layout.py
+index 53a37e3e60bcd893fc0bb6aa1422c938ba78add1..3c2bfcc81b1dcf1462f1e74c3f73d9e46f50e78a 100644
+--- a/tests/models/inkling/test_moe_weight_layout.py
++++ b/tests/models/inkling/test_moe_weight_layout.py
+@@ -132,6 +132,63 @@ def test_moe_loads_calibrated_input_scale(projection: str, amax: float) -> None:
+     assert loaded == [f"experts.routed_experts.{projection}_input_scale"]
+ 
+ 
++def test_moe_resolves_preprocessed_quantized_parameter_names() -> None:
++    experts = SimpleNamespace(
++        w13_weight_packed=torch.nn.Parameter(torch.empty(1)),
++        w2_weight_packed=torch.nn.Parameter(torch.empty(1)),
++        w13_weight_global_scale=torch.nn.Parameter(torch.empty(1)),
++        w2_weight_global_scale=torch.nn.Parameter(torch.empty(1)),
++    )
++
++    assert (
++        moe.InklingMoE._resolve_routed_param_name(experts, "w13_weight")
++        == "w13_weight_packed"
++    )
++    assert (
++        moe.InklingMoE._resolve_routed_param_name(experts, "w2_weight")
++        == "w2_weight_packed"
++    )
++    assert (
++        moe.InklingMoE._resolve_routed_param_name(experts, "w13_weight_scale_2")
++        == "w13_weight_global_scale"
++    )
++    assert (
++        moe.InklingMoE._resolve_routed_param_name(experts, "w2_weight_scale_2")
++        == "w2_weight_global_scale"
++    )
++
++
++def test_moe_deinterleaves_transposed_wna16_w13_load() -> None:
++    calls = []
++
++    def weight_loader(**kwargs) -> None:
++        calls.append(kwargs)
++
++    experts = SimpleNamespace(weight_loader=weight_loader)
++    param = torch.nn.Parameter(torch.empty(3, 2, 4))
++    param.is_transposed = True
++    weight = torch.arange(3 * 8 * 2).reshape(3, 8, 2)
++
++    moe.InklingMoE._load_transposed_routed_param(
++        experts,
++        param,
++        "w13_weight_packed",
++        weight,
++        {0: 0, 2: 1},
++    )
++
++    assert [(call["expert_id"], call["shard_id"]) for call in calls] == [
++        (0, "w1"),
++        (0, "w3"),
++        (2, "w1"),
++        (2, "w3"),
++    ]
++    torch.testing.assert_close(calls[0]["loaded_weight"], weight[0, 0::2])
++    torch.testing.assert_close(calls[1]["loaded_weight"], weight[0, 1::2])
++    torch.testing.assert_close(calls[2]["loaded_weight"], weight[2, 0::2])
++    torch.testing.assert_close(calls[3]["loaded_weight"], weight[2, 1::2])
++
++
+ def test_sink_down_projection_is_packed_during_load(monkeypatch) -> None:
+     monkeypatch.setattr(moe, "get_tensor_model_parallel_world_size", lambda: 2)
+     monkeypatch.setattr(moe, "get_tensor_model_parallel_rank", lambda: 1)
+diff --git a/vllm/models/inkling/nvidia/moe.py b/vllm/models/inkling/nvidia/moe.py
+index 6d0a550b03d1d15cc3aa2aaac489bd4eda0262fd..56947ebb10f598dd62a4b07dfe5199fb870c4557 100644
+--- a/vllm/models/inkling/nvidia/moe.py
++++ b/vllm/models/inkling/nvidia/moe.py
+@@ -540,6 +540,54 @@ class InklingMoE(nn.Module):
+         emap = manager.expert_map.tolist()
+         return {g: slot for g, slot in enumerate(emap) if slot >= 0}
+ 
++    @staticmethod
++    def _resolve_routed_param_name(experts: RoutedExperts, key: str) -> str:
++        """Map checkpoint names to pre-processing parameter names."""
++        if hasattr(experts, key):
++            return key
++        aliases = {
++            "w13_weight": "w13_weight_packed",
++            "w2_weight": "w2_weight_packed",
++            "w13_weight_scale_2": "w13_weight_global_scale",
++            "w2_weight_scale_2": "w2_weight_global_scale",
++        }
++        param_name = aliases.get(key, key)
++        if not hasattr(experts, param_name):
++            raise AttributeError(f"Routed experts have no parameter for {key!r}")
++        return param_name
++
++    @staticmethod
++    def _load_transposed_routed_param(
++        experts: RoutedExperts,
++        param: Parameter,
++        param_name: str,
++        weight: torch.Tensor,
++        slots: dict[int, int],
++    ) -> None:
++        """Load a fused Inkling tensor through vLLM's WNA16 shard loader."""
++        is_w13 = param_name.startswith("w13")
++        is_interleaved = param_name in {
++            "w13_weight_packed",
++            "w13_weight_scale",
++            "w13_weight_zero_point",
++        }
++        if is_w13 and is_interleaved:
++            shards = (("w1", weight[:, 0::2]), ("w3", weight[:, 1::2]))
++        elif is_w13:
++            shards = (("w1", weight),)
++        else:
++            shards = (("w2", weight),)
++
++        for gid in slots:
++            for shard_id, source in shards:
++                experts.weight_loader(
++                    param=param,
++                    loaded_weight=source[gid].contiguous().to(param.device),
++                    weight_name=param_name,
++                    shard_id=shard_id,
++                    expert_id=gid,
++                )
++
+     def load_expert_weight(self, name: str, weight: torch.Tensor) -> list[str]:
+         """Load one checkpoint expert tensor.
+ 
+@@ -565,11 +613,15 @@ class InklingMoE(nn.Module):
+             assert math.isfinite(amax) and amax > 0, (
+                 f"bad {projection} input_amax: {amax}"
+             )
+-            input_scale = getattr(experts, f"{projection}_input_scale")
++            input_scale_name = f"{projection}_input_scale"
++            if not hasattr(experts, input_scale_name):
++                input_scale_name = f"{projection}_input_global_scale"
++            input_scale = getattr(experts, input_scale_name)
+             input_scale.data.fill_(amax / _NVFP4_INPUT_SCALE_DENOMINATOR)
+-            return [f"experts.routed_experts.{projection}_input_scale"]
++            return [f"experts.routed_experts.{input_scale_name}"]
+ 
+-        param = getattr(experts, key)
++        param_name = self._resolve_routed_param_name(experts, key)
++        param = getattr(experts, param_name)
+         slots = self._local_expert_slots()
+         gids = sorted(slots)
+         lids = [slots[g] for g in gids]
+@@ -580,6 +632,17 @@ class InklingMoE(nn.Module):
+             # fused w13 param carries one slot per gate/up half.
+             vals = weight[gids].float().to(param.device)
+             param.data[lids] = vals[:, None] if param.data.ndim == 2 else vals
++        elif getattr(param, "is_transposed", False):
++            # Packed compressed-tensors WNA16 parameters are stored transposed
++            # for GPTQ/Marlin. Delegate TP slicing and fused w1/w3 placement to
++            # RoutedExperts instead of assuming the native Inkling layout.
++            self._load_transposed_routed_param(
++                experts,
++                param,
++                param_name,
++                weight,
++                slots,
++            )
+         elif key.startswith("w13"):
+             # Checkpoint w13 rows are interleaved [g0, u0, g1, u1, ...]; the
+             # fused param layout is [w1(gate); w3(up)]. The TP-local rows form
+@@ -598,7 +661,7 @@ class InklingMoE(nn.Module):
+             shard = param.shape[2]
+             for gid, lid in slots.items():
+                 param.data[lid].copy_(weight[gid].narrow(1, tp_rank * shard, shard))
+-        return [f"experts.routed_experts.{key}"]
++        return [f"experts.routed_experts.{param_name}"]
+ 
+     def finalize_load(self) -> list[str]:
+         """Post-load fixups for zeroed padding experts."""
+@@ -613,11 +676,15 @@ class InklingMoE(nn.Module):
+                 continue
+             for pname in (
+                 "w13_weight",
++                "w13_weight_packed",
+                 "w2_weight",
++                "w2_weight_packed",
+                 "w13_weight_scale",
+                 "w2_weight_scale",
+                 "w13_weight_scale_2",
+                 "w2_weight_scale_2",
++                "w13_weight_global_scale",
++                "w2_weight_global_scale",
+             ):
+                 p = getattr(experts, pname, None)
+                 if p is not None:

@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0.0",
+  "suite_id": "gate-d-text-smoke-v1",
+  "seed": 20260730,
+  "chat_template_kwargs": {
+    "reasoning_effort": "none"
+  },
+  "proof_of_life": {
+    "id": "water-freezing-explanation",
+    "prompt": "In one concise sentence, explain why liquid water freezes when it gets cold enough.",
+    "max_tokens": 32
+  },
+  "smoke_max_tokens": 8,
+  "smoke_prompts": [
+    {
+      "id": "exact-ready",
+      "prompt": "Reply with exactly: READY",
+      "expected_text": "READY"
+    },
+    {
+      "id": "integer-addition",
+      "prompt": "What is 2 + 2? Answer with the number only.",
+      "expected_text": "4"
+    },
+    {
+      "id": "capital-france",
+      "prompt": "Name the capital of France in one word.",
+      "expected_text": "Paris"
+    },
+    {
+      "id": "even-sequence",
+      "prompt": "Complete this sequence with one number: 2, 4, 6, 8,",
+      "expected_text": "10"
+    },
+    {
+      "id": "numeric-comparison",
+      "prompt": "Which is larger, 7 or 5? Answer with one number.",
+      "expected_text": "7"
+    },
+    {
+      "id": "spell-cat",
+      "prompt": "Spell the English word cat.",
+      "expected_text": "cat"
+    },
+    {
+      "id": "grass-color",
+      "prompt": "Name the usual color of healthy grass in one word.",
+      "expected_text": "green"
+    },
+    {
+      "id": "polygon-check",
+      "prompt": "Answer yes or no: Is a square a polygon?",
+      "expected_text": "yes"
+    },
+    {
+      "id": "hello-spanish",
+      "prompt": "Translate hello to Spanish. Answer with one word.",
+      "expected_text": "hola"
+    },
+    {
+      "id": "exact-done",
+      "prompt": "Return the lowercase word done.",
+      "expected_text": "done"
+    }
+  ]
+}

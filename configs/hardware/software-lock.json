@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "recorded_at": "2026-07-30",
+  "developer_environment": {
+    "python": "3.12.12",
+    "uv": "0.11.29",
+    "hatchling": "1.31.0",
+    "pytest": "9.1.1",
+    "ruff": "0.15.22",
+    "mypy": "2.3.0"
+  },
+  "serving_environment": {
+    "image": "vllm/vllm-openai:v0.26.0-x86_64-cu129-ubuntu2404",
+    "manifest_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8",
+    "vllm_commit": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+    "cuda": "12.9.1",
+    "python": "3.12",
+    "packages": {
+      "vllm": "0.26.0",
+      "torch": "2.11.0",
+      "torchaudio": "2.11.0",
+      "torchvision": "0.26.0",
+      "transformers": "5.14.1",
+      "safetensors": "0.8.0",
+      "compressed-tensors": "0.17.0",
+      "flashinfer-python": "0.6.14"
+    },
+    "image_pinned_components": [
+      "NCCL",
+      "attention kernels",
+      "CUDA runtime",
+      "cuDNN",
+      "Triton"
+    ]
+  },
+  "conversion_environment": {
+    "llmcompressor": "0.12.0",
+    "compressed-tensors": "0.17.0",
+    "safetensors": "0.8.0",
+    "transformers": "5.14.1"
+  },
+  "provenance": {
+    "vllm_image": "https://hub.docker.com/layers/vllm/vllm-openai/v0.26.0-x86_64-cu129-ubuntu2404/images/sha256-4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8",
+    "vllm_release": "https://pypi.org/project/vllm/0.26.0/",
+    "uv_release": "https://pypi.org/project/uv/0.11.29/"
+  }
+}
+

@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "w8a16-conservative-v1",
+  "description": "Match the official NVFP4 sensitivity prior: quantize routed experts in layers 3-41, retain layer 2 and all other modules in BF16, and omit optional MTP from proof of life.",
+  "include_mtp": false,
+  "quantization": {
+    "weight_bits": 8,
+    "activation_bits": 16,
+    "strategy": "group",
+    "group_size": 128,
+    "symmetric": true,
+    "scale_dtype": "BF16",
+    "scale_bytes": 2,
+    "zero_points": false,
+    "allocation_alignment_bytes": 256
+  },
+  "quantize_families": [
+    "routed_expert_up_gate",
+    "routed_expert_down"
+  ],
+  "exclude_layers": {
+    "routed_expert_up_gate": [
+      2
+    ],
+    "routed_expert_down": [
+      2
+    ]
+  },
+  "runtime_assessment": "plausible-unverified",
+  "runtime_notes": "Pinned vLLM exposes groupwise symmetric INT8 W8A16 fused-MoE support, but Inkling packed loading and sm80 execution still require Gate B."
+}

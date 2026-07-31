@@ -1,0 +1,313 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "ampere-inkling-gate-b-representative-execution",
+  "status": "verified-live-pass",
+  "decision": "go-for-streaming-w8a16-conversion",
+  "decision_date": "2026-07-31",
+  "source_project": "project-49b1b523-d248-434f-bd4",
+  "source_region": "us-central1",
+  "source_model_revision": "thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4",
+  "runtime_revision": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+  "serving_image_manifest_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8",
+  "jobs": {
+    "kernel_bundle": {
+      "source_job_id": "8517676070802030592",
+      "source_job_display_name": "inkling-gate-b-bundle-20260731-010814",
+      "source_job_state": "JOB_STATE_FAILED",
+      "source_job_created_at": "2026-07-31T01:08:16.992997Z",
+      "source_job_started_at": "2026-07-31T01:13:11Z",
+      "source_job_ended_at": "2026-07-31T01:20:15Z",
+      "component_results": {
+        "tp4_moe": "passed",
+        "ep4_moe": "passed",
+        "linear_tp4": "passed",
+        "generation_tp4": "failed"
+      },
+      "terminal_state_explanation": "The three kernel and sharding components passed and uploaded immutable artifacts. The generation harness stopped at vLLM apply_model callback serialization before generation; the corrected generation-only job is recorded separately."
+    },
+    "generation": {
+      "source_job_id": "8005673088165347328",
+      "source_job_display_name": "tiny-inkling-generate-tp4-20260731-013339",
+      "source_job_state": "JOB_STATE_SUCCEEDED",
+      "source_job_created_at": "2026-07-31T01:33:40.285746Z",
+      "source_job_started_at": "2026-07-31T02:17:24Z",
+      "source_job_ended_at": "2026-07-31T02:23:29Z",
+      "resource_note": "Vertex reported insufficient us-central1 capacity once, retained the same CustomJob request, and provisioned the single four-A100 worker without a duplicate submitted job."
+    }
+  },
+  "runtime_patches": [
+    {
+      "path": "patches/vllm/0001-inkling-sm80-flex-relative-attention.patch",
+      "sha256": "ebf3ecce3183796f07927a536ee0f05c4b9f1c9244c77a54dfbc51ef40444e96",
+      "purpose": "Select paged FlexAttention with learned Inkling relative bias on SM80."
+    },
+    {
+      "path": "patches/vllm/0002-inkling-fused-wna16-loader.patch",
+      "sha256": "bfff68f0e15be7c072e213682aa5c1044f2179ea3d066fc50448d39b5e894516",
+      "purpose": "Load transposed, fused, interleaved Inkling W13 and W2 tensors into packed routed-expert parameters."
+    },
+    {
+      "path": "patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch",
+      "sha256": "3b051d4ed02a7eb6eda5c0f0b65cfb445b7e9ee8d8aa78ce4c40a62ad350d7c0",
+      "purpose": "Classify grouped W13 scales using the logical hidden-size GEMM K."
+    }
+  ],
+  "source_artifacts": {
+    "kernel_bundle_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/gate-b/inkling-gate-b-bundle-20260731-010814-sources.tgz",
+    "kernel_bundle_sha256": "9bd23d64a8b19ba858fae2c58897d2b8bce179df7053d0a41a3a167db157b2f1",
+    "layer_probe_sha256": "f6571ac41b2aad9cdaf9bac4f011ed4fcdc2b59ea4da7718eca97b24f75aa9a7",
+    "linear_probe_sha256": "3d0d1f6f8b10d087b340794d2e7288873afadedf695ce89d159e113f0b3b1ff2",
+    "fixture_builder_sha256": "caaadcf7dddb49b9c95b285b859d0de0ab9dea94439326b0c68a34c5720cc749",
+    "successful_generation_probe_sha256": "a7b03db852582e5b9c8e5dc5e59897f0d5fef568c11cb397020f14b9607e4d9d"
+  },
+  "artifacts": [
+    {
+      "component": "kernel_bundle_summary",
+      "status": "diagnostic-partial-failure",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/gate-b/inkling-gate-b-bundle-20260731-010814-summary.json",
+      "path": "results/raw/inkling-gate-b-bundle-20260731-010814-summary.json",
+      "bytes": 3267,
+      "sha256": "439285aad1acb68de38ed9d8d59099f07a4c3fc91155889764b428dbf2941551"
+    },
+    {
+      "component": "tp4_inkling_moe",
+      "status": "passed",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/gate-b/inkling-gate-b-bundle-20260731-010814-moe-tp4.json",
+      "path": "results/raw/inkling-gate-b-bundle-20260731-010814-moe-tp4.json",
+      "bytes": 31103,
+      "sha256": "41ae36afc2043606c300fdc6688ec54c83549de9fd3ee0ba12ee6a41701c713d"
+    },
+    {
+      "component": "ep4_inkling_moe",
+      "status": "passed",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/gate-b/inkling-gate-b-bundle-20260731-010814-moe-ep4.json",
+      "path": "results/raw/inkling-gate-b-bundle-20260731-010814-moe-ep4.json",
+      "bytes": 29790,
+      "sha256": "14d1adc46bbcaa95749d71f19fa4a17158b07ca11d9856378887374000bc3700"
+    },
+    {
+      "component": "tp4_standard_linear",
+      "status": "passed",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/gate-b/inkling-gate-b-bundle-20260731-010814-linear-tp4.json",
+      "path": "results/raw/inkling-gate-b-bundle-20260731-010814-linear-tp4.json",
+      "bytes": 11344,
+      "sha256": "7ec38e5570de22f743ad4482c9d73fcc2764162d94aeae1cb7a6226a9543e9a5"
+    },
+    {
+      "component": "tp4_generation_aggregate",
+      "status": "passed",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/tiny-generation/tiny-inkling-generate-tp4-20260731-013339.json",
+      "path": "results/raw/tiny-inkling-generate-tp4-20260731-013339.json",
+      "bytes": 73842,
+      "sha256": "638aa89712e4c079959d598b6f40f0bc7dd4b4b8ee9ec8f2284f1028a58453e2"
+    },
+    {
+      "component": "tp4_generation_w8a16",
+      "status": "passed",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/tiny-generation/tiny-inkling-generate-tp4-20260731-013339-w8a16.json",
+      "path": "results/raw/tiny-inkling-generate-tp4-20260731-013339-w8a16.json",
+      "bytes": 43951,
+      "sha256": "c48974c9555910ef5e0cbeddda15305ef6390e8f11b605a4e2072fb2bc1f397b"
+    },
+    {
+      "component": "tp4_generation_bf16",
+      "status": "passed",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/tiny-generation/tiny-inkling-generate-tp4-20260731-013339-bf16.json",
+      "path": "results/raw/tiny-inkling-generate-tp4-20260731-013339-bf16.json",
+      "bytes": 23229,
+      "sha256": "f37e32583facb9929a8b928897ed7433c27ba5c84a7f1d1e9769fd4b7434f827"
+    }
+  ],
+  "fixture": {
+    "architecture": "InklingForCausalLM",
+    "devices": 4,
+    "layers": 2,
+    "hidden_size": 512,
+    "intermediate_size": 512,
+    "attention_layout": "layer 0 local; layer 1 global",
+    "routed_experts": 8,
+    "shared_sink_experts": 2,
+    "top_k": 2,
+    "weight_bits": 8,
+    "group_size": 128,
+    "activation_dtype": "bfloat16",
+    "weight_storage": "packed uint8b128 in int32",
+    "prompts": 2,
+    "generated_tokens_per_prompt": 4,
+    "layer_max_abs_tolerance": 0.08
+  },
+  "observations": {
+    "tp4_moe": {
+      "ranks_passed": 4,
+      "quant_method": "CompressedTensorsWNA16MarlinMoEMethod",
+      "wna16_backend": "MARLIN",
+      "experts_class": "MarlinExperts",
+      "moe_kernel_class": "FusedMoEKernel",
+      "profiled_kernel": "_moe_C::moe_wna16_marlin_gemm",
+      "worst_kernel_max_abs_vs_dequantized_reference": 0.0028972327709198,
+      "worst_output_max_abs_vs_bf16_reference": 0.005985870957374573,
+      "worst_quantization_max_abs_vs_bf16_reference": 0.004736624658107758,
+      "local_intermediate_size": 128,
+      "experts_per_rank": 8,
+      "nccl_all_reduce_actual": 10.0,
+      "nccl_all_reduce_expected": 10.0
+    },
+    "ep4_moe": {
+      "ranks_passed": 4,
+      "quant_method": "CompressedTensorsWNA16MarlinMoEMethod",
+      "wna16_backend": "MARLIN",
+      "profiled_kernel": "_moe_C::moe_wna16_marlin_gemm",
+      "worst_kernel_max_abs_vs_dequantized_reference": 0.003599107265472412,
+      "worst_output_max_abs_vs_bf16_reference": 0.005497589707374573,
+      "worst_quantization_max_abs_vs_bf16_reference": 0.004736624658107758,
+      "global_expert_ownership": {
+        "rank_0": [0, 1],
+        "rank_1": [2, 3],
+        "rank_2": [4, 5],
+        "rank_3": [6, 7]
+      },
+      "all_to_all_kernel_used": false,
+      "all_to_all_explanation": "DP, PCP, and SP are each one in this fixture; EP ownership and partial reduction execute without runtime all-to-all kernels.",
+      "nccl_all_reduce_actual": 10.0,
+      "nccl_all_reduce_expected": 10.0
+    },
+    "standard_linear_tp4": {
+      "ranks_passed": 4,
+      "scheme": "CompressedTensorsWNA16",
+      "kernel_class": "MarlinLinearKernel",
+      "profiled_kernel": "_C::marlin_gemm",
+      "worst_kernel_max_abs_vs_dequantized_reference": 0.012770891189575195,
+      "worst_tp_sharded_reference_max_abs_vs_full_reference": 4.76837158203125e-07,
+      "worst_quantization_max_abs_vs_bf16_reference": 0.018590211868286133,
+      "peak_allocated_bytes_per_rank": 20318208
+    },
+    "generation_tp4": {
+      "w8a16_status": "passed",
+      "bf16_status": "passed",
+      "ranks_reported_per_variant": 4,
+      "all_parameters_finite": true,
+      "w8a16_contract_failures": [],
+      "bf16_contract_failures": [],
+      "w8a16_attention_backend": "FlexAttentionBackend",
+      "w8a16_quant_method": "CompressedTensorsWNA16MarlinMoEMethod",
+      "w8a16_backend": "MARLIN",
+      "w8a16_peak_allocated_bytes_per_rank": 296555520,
+      "bf16_peak_allocated_bytes_per_rank": 303562752,
+      "w8a16_initialization_seconds": 157.98275146799998,
+      "bf16_initialization_seconds": 71.45820932800001,
+      "w8a16_generation_seconds": 11.434503940000013,
+      "bf16_generation_seconds": 26.485889155000052,
+      "timing_caveat": "Eager first-run fixture timing includes JIT effects and is not a throughput comparison.",
+      "matching_token_fraction": 0.625,
+      "exact_prompt_matches": 1,
+      "prompts_compared": 2,
+      "first_prompt_w8a16_tokens": [59, 175, 192, 8],
+      "first_prompt_bf16_tokens": [59, 175, 192, 8],
+      "second_prompt_w8a16_tokens": [36, 81, 201, 110],
+      "second_prompt_bf16_tokens": [36, 121, 143, 199],
+      "first_divergence_explanation": "At the second generated token of prompt two, W8A16 assigns tokens 81 and 121 the same recorded log probability. BF16 prefers token 121 over token 81 by 0.0078125; the later autoregressive paths therefore differ.",
+      "quality_caveat": "This is a deterministic random untrained fixture. Greedy-token agreement is diagnostic and is not a model-quality metric."
+    }
+  },
+  "gate_b_criteria": {
+    "quantized_routed_moe_loads_on_a100": {
+      "passed": true,
+      "evidence": "The real InklingMoE wrapper loaded packed W13/W2 routed experts plus BF16 shared sinks on all four A100 ranks in TP4 and EP4."
+    },
+    "output_agrees_with_bf16_within_tolerance": {
+      "passed": true,
+      "tolerance_max_abs": 0.08,
+      "worst_observed_max_abs": 0.005985870957374573,
+      "evidence": "The pre-established direct-layer oracle passes by more than 13x. Full generation is recorded separately, including its one near-tie autoregressive branch."
+    },
+    "four_rank_sharding_works": {
+      "passed": true,
+      "evidence": "TP4 sharded routed/shared intermediate dimensions and EP4 assigned two complete routed experts per rank; NCCL all-reduce returned 10.0 on every rank."
+    },
+    "runtime_uses_expected_execution_path": {
+      "passed": true,
+      "evidence": "All quantized layer and generation workers selected Marlin. Torch profiler captured _moe_C::moe_wna16_marlin_gemm and _C::marlin_gemm."
+    },
+    "no_fundamental_unsupported_tensor_layout_remains": {
+      "passed": true,
+      "evidence": "The patched loader consumed checkpoint-interleaved fused W13, packed W2, group scales, TP slices, and EP maps in the real Inkling classes."
+    },
+    "complete_tiny_model_generation_succeeds": {
+      "passed": true,
+      "evidence": "Both matched checkpoints generated two four-token completions through local and global FlexAttention layers on TP4 with finite outputs and no worker contract failures."
+    }
+  },
+  "profiling": {
+    "torch_profiler": "present",
+    "nsight_systems": "not-installed-in-pinned-serving-image",
+    "nsight_compute": "not-installed-in-pinned-serving-image",
+    "scope": "Kernel identity and execution-path evidence are sufficient for Gate B conversion authorization. Nsight traces, launch counts, utilization, and dequantization-overhead characterization remain performance-release work."
+  },
+  "upstream_test_candidates": [
+    "tests/models/inkling/test_fa4_rel_attention.py",
+    "tests/models/inkling/test_moe_weight_layout.py",
+    "tests/kernels/quantization/test_marlin_tile_padding.py"
+  ],
+  "consolidation": {
+    "cancelled_jobs": [
+      {
+        "source_job_id": "3863346593402978304",
+        "source_job_display_name": "inkling-w8a16-layer-tp4-20260731-002323",
+        "source_job_state": "JOB_STATE_CANCELLED",
+        "artifact": null
+      },
+      {
+        "source_job_id": "3021173463084695552",
+        "source_job_display_name": "tiny-inkling-generate-tp4-20260731-002705",
+        "source_job_state": "JOB_STATE_CANCELLED",
+        "artifact": null
+      },
+      {
+        "source_job_id": "836927643810004992",
+        "source_job_display_name": "w8a16-linear-tp4-20260731-002804",
+        "source_job_state": "JOB_STATE_CANCELLED",
+        "artifact": null
+      }
+    ],
+    "replacement": "Job 8517676070802030592 acquired one whole node and ran TP4 MoE, EP4 MoE, standard linear, and both generation variants sequentially. Only its failed generation harness stage was rerun."
+  },
+  "superseded_attempts": [
+    {
+      "source_job_id": "5799050008242159616",
+      "source_job_display_name": "inkling-w8a16-layer-tp4-20260730-235542",
+      "result": "Probe harness lacked vLLM forward context.",
+      "artifact_sha256": "36522756f1237521f30cad50ece8151600e37daef9c455a5bef7754d8ace0153"
+    },
+    {
+      "source_job_id": "2769253358928658432",
+      "source_job_display_name": "inkling-w8a16-layer-tp4-20260731-000053",
+      "result": "Probe harness had not initialized the vLLM workspace manager.",
+      "artifact_sha256": "d2402c350952b0fb7fb71074972ff900243ca8a45b9eccbfd82a1adfd6e4d909"
+    },
+    {
+      "source_job_id": "848468117855141888",
+      "source_job_display_name": "inkling-w8a16-layer-tp4-20260731-000256",
+      "result": "Marlin W13 grouped-scale permutation produced 0.1128694 max absolute error and exposed the logical-K bug fixed by patch 0003.",
+      "artifact_sha256": "2707763fd22befbe95411ad1617f6b45c5d726f891ba2f5a0dae95c4c6947872"
+    },
+    {
+      "source_job_id": "5129983988600930304",
+      "source_job_display_name": "inkling-w8a16-layer-tp4-20260731-000923",
+      "result": "Confirmatory pre-fix Marlin run reproduced 0.1129394 max absolute error.",
+      "artifact_sha256": "fe1e2f7dfd172a1de9bcbe3d86b66b658045d07fd0e170f295d978877f29c0da"
+    },
+    {
+      "source_job_id": "4125681271697309696",
+      "source_job_display_name": "tiny-inkling-generate-tp4-20260731-001526",
+      "result": "The automatic Inkling renderer required a tokenizer despite token-ID-only generation; fixed by selecting the HF renderer.",
+      "artifact_sha256": "1d54d110094b4658990c0f95cdf6048434865786f833ed686267e938f4c90087"
+    },
+    {
+      "source_job_id": "170817111424237568",
+      "source_job_display_name": "tiny-inkling-generate-tp4-20260731-012234",
+      "result": "The callback reached vLLM EngineCore but standard multiprocessing pickle could not resolve __main__.inspect_model; fixed by importing the probe under a stable module name.",
+      "artifact_sha256": "b3995efd232382797245dd2c9359027d5c70b94952ad173f58bc720acc68a0fb"
+    }
+  ],
+  "conclusion": "Gate B passes. Representative Inkling W8A16 routed-MoE loading, numerical agreement, TP4, EP4, NCCL, ordinary linear execution, actual Marlin kernel selection, and complete TP4 generation all work on A100. This authorizes implementation and execution of the resumable streaming full-checkpoint converter; it does not establish full-model quality, full-model HBM peaks, or production throughput."
+}

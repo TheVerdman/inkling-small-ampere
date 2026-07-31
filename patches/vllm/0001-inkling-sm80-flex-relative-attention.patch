@@ -1,0 +1,308 @@
+diff --git a/tests/models/inkling/test_fa4_rel_attention.py b/tests/models/inkling/test_fa4_rel_attention.py
+index 1a11ac220c872d1f6100288c7bce3ee63bf714b6..c33a1143ecd331edf6699129df7892beefdc6ed6 100644
+--- a/tests/models/inkling/test_fa4_rel_attention.py
++++ b/tests/models/inkling/test_fa4_rel_attention.py
+@@ -20,6 +20,7 @@ import torch
+ 
+ from vllm.models.inkling.nvidia.attention import (
+     InklingAttention,
++    _use_ampere_flex_attention,
+     compute_log_scaling_tau,
+ )
+ from vllm.models.inkling.nvidia.ops.fa4_rel_attention import (
+@@ -27,6 +28,9 @@ from vllm.models.inkling.nvidia.ops.fa4_rel_attention import (
+     inkling_fa4_num_splits,
+     inkling_fa4_rel_attention,
+ )
++from vllm.models.inkling.nvidia.ops.flex_rel_attention import (
++    make_inkling_flex_score_mod,
++)
+ from vllm.platforms import current_platform
+ from vllm.platforms.interface import DeviceCapability
+ 
+@@ -62,6 +66,50 @@ def test_split_packed_kv_cache():
+     torch.testing.assert_close(value_cache, attention.kv_cache[..., 8:].transpose(1, 2))
+ 
+ 
++@pytest.mark.parametrize(
++    ("major", "expected"),
++    [(8, True), (9, False), (10, False), (11, False), (12, False)],
++)
++def test_ampere_flex_attention_selection(monkeypatch, major, expected):
++    monkeypatch.setattr(
++        current_platform,
++        "get_device_capability",
++        lambda: DeviceCapability(major=major, minor=0),
++    )
++    _use_ampere_flex_attention.cache_clear()
++    try:
++        assert _use_ampere_flex_attention() is expected
++    finally:
++        _use_ampere_flex_attention.cache_clear()
++
++
++def test_flex_score_mod_relative_bias():
++    rel_logits = torch.arange(2 * 3 * 4, dtype=torch.bfloat16).reshape(2, 3, 4)
++    score_mod = make_inkling_flex_score_mod(rel_logits, rel_extent=4)
++    score = torch.tensor(2.0)
++
++    in_range = score_mod(
++        score,
++        torch.tensor(0),
++        torch.tensor(1),
++        torch.tensor(7),
++        torch.tensor(5),
++        physical_q=torch.tensor(1),
++    )
++    expected_bias = rel_logits[1, 1, 2].float()
++    torch.testing.assert_close(in_range, score + expected_bias)
++
++    out_of_range = score_mod(
++        score,
++        torch.tensor(0),
++        torch.tensor(1),
++        torch.tensor(7),
++        torch.tensor(2),
++        physical_q=torch.tensor(1),
++    )
++    torch.testing.assert_close(out_of_range, score)
++
++
+ def test_num_splits_hopper_is_unsplit(monkeypatch):
+     monkeypatch.setattr(
+         current_platform,
+diff --git a/vllm/models/inkling/nvidia/attention.py b/vllm/models/inkling/nvidia/attention.py
+index fc617b89ad6a0c2d2e9c21a62b45d1797c5beb42..d88c38633b2e311417000c274a6c11e186260ed7 100644
+--- a/vllm/models/inkling/nvidia/attention.py
++++ b/vllm/models/inkling/nvidia/attention.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ from __future__ import annotations
+ 
++from functools import cache
+ from typing import cast
+ 
+ import torch
+@@ -17,6 +18,7 @@ from vllm.model_executor.layers.linear import (
+     RowParallelLinear,
+ )
+ from vllm.model_executor.layers.quantization import QuantizationConfig
++from vllm.platforms import current_platform
+ from vllm.utils.torch_utils import (
+     canonicalize_singleton_dim_strides,
+     kv_cache_dtype_str_to_dtype,
+@@ -26,6 +28,11 @@ from vllm.v1.attention.backends.flash_attn import (
+     FlashAttentionBackend,
+     FlashAttentionMetadata,
+ )
++from vllm.v1.attention.backends.flex_attention import (
++    FlexAttentionBackend,
++    FlexAttentionImpl,
++    FlexAttentionMetadata,
++)
+ from vllm.v1.kv_cache_interface import (
+     FullAttentionSpec,
+     KVCacheSpec,
+@@ -40,11 +47,18 @@ from .ops.fa4_rel_attention import (
+     inkling_fa4_rel_attention,
+ )
+ from .ops.fa4_warmup import InklingFA4WarmupConfig, register_fa4_warmup
++from .ops.flex_rel_attention import make_inkling_flex_score_mod
+ from .ops.qkvr_prep import fused_qkvr_prep
+ from .sconv_swa_attn import _K, _V, InklingConvState, InklingSconvMetadata
+ from .short_conv import InklingShortConv
+ 
+ 
++@cache
++def _use_ampere_flex_attention() -> bool:
++    capability = current_platform.get_device_capability()
++    return capability is not None and capability.major == 8
++
++
+ def compute_log_scaling_tau(
+     positions: torch.Tensor, n_floor: int, alpha: float
+ ) -> torch.Tensor:
+@@ -91,6 +105,7 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+         self.log_scaling_alpha = config.log_scaling_alpha
+         # q/k are per-head RMS-normed (unit norm), so Inkling scales by 1/head_dim.
+         self.scaling = 1.0 / head_dim
++        self._use_flex_attention = _use_ampere_flex_attention()
+ 
+         tp_size = get_tensor_model_parallel_world_size()
+         self.num_total_heads = num_heads
+@@ -168,6 +183,17 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+         )
+         self.register_buffer("k_scale", torch.ones((), dtype=torch.float32))
+         self.register_buffer("v_scale", torch.ones((), dtype=torch.float32))
++        self._flex_attention_impl: FlexAttentionImpl | None = None
++        if self._use_flex_attention:
++            self._flex_attention_impl = FlexAttentionImpl(
++                num_heads=self.num_heads,
++                head_size=self.head_dim,
++                scale=self.scaling,
++                num_kv_heads=self.num_kv_heads,
++                alibi_slopes=None,
++                sliding_window=self.local_extent,
++                kv_cache_dtype=self.kv_cache_dtype,
++            )
+ 
+         compilation_config = vllm_config.compilation_config
+         if prefix in compilation_config.static_forward_context:
+@@ -175,26 +201,29 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+         compilation_config.static_forward_context[prefix] = self
+         self.kv_cache = torch.tensor([])  # replaced by bind_kv_cache
+ 
+-        register_fa4_warmup(
+-            InklingFA4WarmupConfig(
+-                num_heads=self.num_heads,
+-                num_kv_heads=self.num_kv_heads,
+-                head_dim=self.head_dim,
+-                rel_extent=self.rel_extent,
+-                window_size=self.window_size,
+-                is_local=self.is_local,
+-                max_kv_len=self._max_kv_len,
+-                dtype=vllm_config.model_config.dtype,
+-                kv_dtype=self.kv_cache_torch_dtype,
+-                block_size=vllm_config.cache_config.block_size,
+-                max_num_reqs=vllm_config.scheduler_config.max_num_seqs,
+-                max_num_batched_tokens=(
+-                    vllm_config.scheduler_config.max_num_batched_tokens
+-                ),
++        if not self._use_flex_attention:
++            register_fa4_warmup(
++                InklingFA4WarmupConfig(
++                    num_heads=self.num_heads,
++                    num_kv_heads=self.num_kv_heads,
++                    head_dim=self.head_dim,
++                    rel_extent=self.rel_extent,
++                    window_size=self.window_size,
++                    is_local=self.is_local,
++                    max_kv_len=self._max_kv_len,
++                    dtype=vllm_config.model_config.dtype,
++                    kv_dtype=self.kv_cache_torch_dtype,
++                    block_size=vllm_config.cache_config.block_size,
++                    max_num_reqs=vllm_config.scheduler_config.max_num_seqs,
++                    max_num_batched_tokens=(
++                        vllm_config.scheduler_config.max_num_batched_tokens
++                    ),
++                )
+             )
+-        )
+ 
+     def get_attn_backend(self) -> type[AttentionBackend]:
++        if self._use_flex_attention:
++            return FlexAttentionBackend
+         return FlashAttentionBackend
+ 
+     def get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec:
+@@ -245,7 +274,10 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+             conv_meta = attn_metadata[self.conv_owner.prefix]
+             md = attn_metadata[self.prefix]
+             assert isinstance(conv_meta, InklingSconvMetadata)
+-            fa_md = cast(FlashAttentionMetadata, md)
++            if self._use_flex_attention:
++                backend_md = cast(FlexAttentionMetadata, md)
++            else:
++                backend_md = cast(FlashAttentionMetadata, md)
+             assert self.kv_cache.numel() > 0
+             assert self.conv_owner.kv_cache.numel() > 0
+             # One launch: K/V sconv (conv-cache insert + conv + residual),
+@@ -274,7 +306,7 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+                 conv_meta.seq_idx,
+                 conv_meta.slot_mapping,
+                 conv_meta.query_start,
+-                fa_md.slot_mapping,
++                backend_md.slot_mapping,
+                 off_k,
+                 off_v,
+                 self.conv_owner.block_size,
+@@ -296,8 +328,30 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+     ) -> None:
+         attn_metadata = get_forward_context().attn_metadata
+         assert isinstance(attn_metadata, dict)
+-        md = cast(FlashAttentionMetadata, attn_metadata[self.prefix])
++        md = attn_metadata[self.prefix]
++
++        if self._use_flex_attention:
++            flex_md = cast(FlexAttentionMetadata, md)
++            nt = flex_md.num_actual_tokens
++            flex_md.score_mod = make_inkling_flex_score_mod(
++                rel_logits[:nt],
++                self.rel_extent,
++            )
++            flex_md.transformed_score_mod = flex_md.get_transformed_score_mod()
++            assert self._flex_attention_impl is not None
++            empty_kv = q.new_empty((0,))
++            self._flex_attention_impl.forward(
++                layer=self,
++                query=q[:nt],
++                key=empty_kv,
++                value=empty_kv,
++                kv_cache=self.kv_cache,
++                attn_metadata=flex_md,
++                output=output[:nt],
++            )
++            return
+ 
++        md = cast(FlashAttentionMetadata, md)
+         nt = md.num_actual_tokens
+         key_cache, value_cache = self._split_kv_cache()
+         max_seqlen_q = bucket_max_seqlen_q(md.max_query_len)
+diff --git a/vllm/models/inkling/nvidia/ops/flex_rel_attention.py b/vllm/models/inkling/nvidia/ops/flex_rel_attention.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6641c9c258b49cd02487183c1dca820bc11672d8
+--- /dev/null
++++ b/vllm/models/inkling/nvidia/ops/flex_rel_attention.py
+@@ -0,0 +1,52 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++from __future__ import annotations
++
++from collections.abc import Callable
++
++import torch
++
++
++def make_inkling_flex_score_mod(
++    rel_logits: torch.Tensor,
++    rel_extent: int,
++) -> Callable[..., torch.Tensor]:
++    """Build an Inkling relative-bias score modifier for paged FlexAttention.
++
++    vLLM's FlexAttention metadata wrapper supplies logical query/KV positions
++    plus ``physical_q``, the packed query row that indexes ``rel_logits``.
++    """
++
++    def score_mod_rel_bias(
++        score: torch.Tensor,
++        batch_index: torch.Tensor,
++        head_index: torch.Tensor,
++        logical_query_index: torch.Tensor,
++        logical_kv_index: torch.Tensor,
++        *,
++        physical_q: torch.Tensor,
++    ) -> torch.Tensor:
++        del batch_index
++        relative_distance = logical_query_index - logical_kv_index
++        relative_index = torch.clamp(
++            relative_distance,
++            min=0,
++            max=rel_extent - 1,
++        )
++        safe_query_index = torch.clamp(
++            physical_q,
++            min=0,
++            max=rel_logits.shape[0] - 1,
++        )
++        relative_bias = rel_logits[
++            safe_query_index,
++            head_index,
++            relative_index,
++        ].to(torch.float32)
++        return score + torch.where(
++            (relative_distance >= 0) & (relative_distance < rel_extent),
++            relative_bias,
++            torch.zeros_like(score),
++        )
++
++    return score_mod_rel_bias

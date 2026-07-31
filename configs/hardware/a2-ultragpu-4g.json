@@ -1,0 +1,31 @@
+{
+  "$schema": "../../manifests/schemas/hardware-contract.schema.json",
+  "schema_version": "1.0.0",
+  "target_id": "gcp-a2-ultragpu-4g-a100-80gb",
+  "description": "Minimum proof-of-life hardware contract; thresholds tolerate provider reporting units.",
+  "requirements": {
+    "operating_system": {
+      "system": "Linux",
+      "architecture": "x86_64"
+    },
+    "cpu": {
+      "logical_count_min": 48
+    },
+    "host_memory": {
+      "bytes_min": 670000000000
+    },
+    "gpu": {
+      "count": 4,
+      "name_pattern": "A100.*80GB",
+      "memory_mib_each_min": 79000
+    },
+    "storage": {
+      "bytes_total_min": 1400000000000,
+      "throughput_probe_required": true
+    },
+    "topology": {
+      "nvlink_required": true,
+      "numa_inventory_required": true
+    }
+  }
+}

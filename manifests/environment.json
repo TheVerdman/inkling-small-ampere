@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "environment-contract",
+  "status": "bootstrap",
+  "hardware_contract": "configs/hardware/a2-ultragpu-4g.json",
+  "software_lock": "configs/hardware/software-lock.json",
+  "collector": "inkling_ampere.environment",
+  "artifact_directory": "results/raw",
+  "immutability": {
+    "canonicalization": "JSON with sorted keys and compact separators",
+    "hash": "sha256",
+    "run_id_prefix": "env",
+    "overwrite": false
+  }
+}
+

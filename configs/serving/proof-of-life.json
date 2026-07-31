@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "status": "planned-not-validated",
+  "gpu_count": 4,
+  "tensor_parallel_size": 4,
+  "expert_parallel_size": 1,
+  "max_model_len": 4096,
+  "max_num_batched_tokens": 512,
+  "block_size": 16,
+  "batch_size": 1,
+  "generation": {
+    "temperature": 0.0,
+    "max_output_tokens": 32
+  },
+  "runtime": {
+    "eager": true,
+    "cuda_graphs": false,
+    "prefix_caching": false,
+    "speculative_decoding": false,
+    "cpu_offload_gib": 0
+  }
+}

@@ -1,0 +1,33 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tools/
+.venv/
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+
+# Checkpoints, caches, and profiling output are intentionally never versioned.
+checkpoints/
+*.safetensors
+*.pt
+*.pth
+*.ncu-rep
+*.nsys-rep
+
+# Run artifacts are immutable but live outside Git. Their manifest hashes are
+# recorded in STATUS.md and publication reports.
+results/raw/*
+!results/raw/README.md
+results/parquet/*
+!results/parquet/README.md
+results/reports/*
+!results/reports/README.md
+

@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0.0",
+  "assumption_id": "a100-proof-of-life-4k-v1",
+  "capacity": {
+    "bytes_per_rank": 84987740160,
+    "source": "observed torch.cuda total_memory on all four GPUs in pinned vLLM image, Vertex job 7887664704179404800",
+    "observed": true,
+    "evidence": "results/raw/inkling-small-a100-recon-20260730-222737.json"
+  },
+  "context": {
+    "tokens": 4096,
+    "max_model_length": 1048576,
+    "max_in_flight_tokens": 512,
+    "batch_size": 1,
+    "layers": 42,
+    "global_attention_layers": 7,
+    "local_attention_layers": 35,
+    "local_window_tokens": 512,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "kv_element_bytes": 2,
+    "attention_block_size": 16,
+    "hidden_size": 4096,
+    "sconv_kernel_size": 4
+  },
+  "fixed_reserves": {
+    "cuda_context_bytes": 1073741824,
+    "nccl_base_bytes": 536870912,
+    "tensor_parallel_communication_bytes": 805306368,
+    "expert_parallel_communication_bytes": 1073741824,
+    "kernel_workspace_bytes": 1073741824,
+    "activation_peak_bytes": 1073741824,
+    "allocator_reserve_bytes": 1073741824,
+    "text_only_multimodal_intermediate_bytes": 0
+  },
+  "fragmentation_fraction_of_tensor_allocations": 0.03,
+  "notes": [
+    "Fixed reserves are planning estimates, not observations.",
+    "Attention KV and short-convolution cache bytes are derived from the pinned model and vLLM cache specs.",
+    "max_in_flight_tokens=512 is an explicit proof-of-life prefill chunk limit; larger chunks increase local-attention and short-convolution peak cache state.",
+    "The proof-of-life profile is text-only; image and audio working sets require separate measured reserves.",
+    "The capacity input is the lower live torch.cuda usable total, not the 81920 MiB physical value reported by historical nvidia-smi.",
+    "vLLM-specific full-model allocation peaks remain estimates."
+  ]
+}

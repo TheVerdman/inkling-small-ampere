@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling==1.31.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "inkling-small-ampere"
+version = "0.1.0"
+description = "Reproducible Ampere INT8 research tooling for Inkling-Small"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "Apache-2.0"
+authors = [{ name = "Inkling-Small Ampere contributors" }]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "pyarrow==25.0.0",
+]
+
+[project.scripts]
+inkling-doctor = "inkling_ampere.environment:main"
+inkling-inspect-checkpoint = "inkling_ampere.checkpoint.inventory:main"
+
+[dependency-groups]
+dev = [
+  "mypy==2.3.0",
+  "pytest==9.1.1",
+  "ruff==0.15.22",
+]
+
+[tool.uv]
+required-version = "==0.11.29"
+default-groups = ["dev"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/inkling_ampere"]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+pretty = true
+show_error_codes = true

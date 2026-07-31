@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "w8a16-balanced-v1",
+  "description": "Quantize every routed expert plus large dense-MLP and attention projections; retain shared experts, routers, embeddings, output head, multimodal towers, norms, convolutions, and optional MTP in higher precision or unloaded state.",
+  "include_mtp": false,
+  "quantization": {
+    "weight_bits": 8,
+    "activation_bits": 16,
+    "strategy": "group",
+    "group_size": 128,
+    "symmetric": true,
+    "scale_dtype": "BF16",
+    "scale_bytes": 2,
+    "zero_points": false,
+    "allocation_alignment_bytes": 256
+  },
+  "quantize_families": [
+    "routed_expert_up_gate",
+    "routed_expert_down",
+    "dense_mlp_up_gate",
+    "dense_mlp_down",
+    "attention_projection"
+  ],
+  "exclude_layers": {},
+  "runtime_assessment": "representative-verified",
+  "runtime_notes": "Gate B live-validated the packed fused-MoE loader, ordinary Linear W8A16 path, Marlin kernels, TP4, EP4, NCCL reduction, SM80 FlexAttention, and complete tiny-model generation on A100. Full-checkpoint load and quality remain Gate C/D work."
+}
