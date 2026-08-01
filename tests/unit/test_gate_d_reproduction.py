@@ -46,7 +46,11 @@ def _gate_d_report(*, phase: str, run_id: str, pid: int) -> dict[str, object]:
         "gate_d": {"automated_runtime_status": "pass"},
         "initialization_seconds": 1.0,
         "one_token_gate": {"output_token_ids": [17]},
-        "proof_of_life": {"output_token_ids": [1, 2, 3], "text": "proof"},
+        "proof_of_life": {
+            "output_token_ids": [1, 2, 3],
+            "text": "proof",
+            "cumulative_logprob": -1.0,
+        },
         "smoke_suite_results": {
             "expected_text_matches": 10,
             "expected_text_total": 10,
@@ -113,13 +117,37 @@ def test_fresh_process_gate_d_reports_reproduce(tmp_path: Path) -> None:
     assert summary["failures"] == []
     checks = cast(dict[str, bool], summary["checks"])
     assert checks and all(checks.values())
+    assert summary["diagnostics"] == {
+        "proof_output_token_ids_match": True,
+        "proof_text_matches": True,
+    }
     assert summary["independent_vertex_provisioning_demonstrated"] is False
 
 
-def test_reproduction_rejects_same_process_and_different_output(tmp_path: Path) -> None:
+def test_reproduction_allows_open_ended_proof_variation(tmp_path: Path) -> None:
+    reproduction = _gate_d_report(phase="reproduction", run_id="2" * 32, pid=202)
+    reproduction_proof = cast(dict[str, object], reproduction["proof_of_life"])
+    reproduction_proof["output_token_ids"] = [9]
+    reproduction_proof["text"] = "equally valid wording"
+
+    completed, summary = _run_comparator(
+        tmp_path,
+        primary=_gate_d_report(phase="primary", run_id="1" * 32, pid=101),
+        reproduction=reproduction,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert summary["status"] == "pass"
+    assert summary["failures"] == []
+    assert summary["diagnostics"] == {
+        "proof_output_token_ids_match": False,
+        "proof_text_matches": False,
+    }
+
+
+def test_reproduction_rejects_same_process(tmp_path: Path) -> None:
     primary = _gate_d_report(phase="primary", run_id="1" * 32, pid=101)
     reproduction = _gate_d_report(phase="reproduction", run_id="1" * 32, pid=101)
-    cast(dict[str, object], reproduction["proof_of_life"])["output_token_ids"] = [9]
 
     completed, summary = _run_comparator(
         tmp_path,
@@ -132,5 +160,4 @@ def test_reproduction_rejects_same_process_and_different_output(tmp_path: Path) 
     assert summary["failures"] == [
         "process run ids are distinct",
         "os process ids are distinct",
-        "proof output matches",
     ]

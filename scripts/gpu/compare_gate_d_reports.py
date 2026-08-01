@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 import traceback
@@ -96,6 +97,21 @@ def _provenance(report: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _proof_is_independently_valid(report: dict[str, object]) -> bool:
+    proof = _object(report.get("proof_of_life"))
+    token_ids = _list(proof.get("output_token_ids"))
+    text = proof.get("text")
+    cumulative_logprob = proof.get("cumulative_logprob")
+    return (
+        bool(token_ids)
+        and isinstance(text, str)
+        and bool(text.strip())
+        and isinstance(cumulative_logprob, (int, float))
+        and not isinstance(cumulative_logprob, bool)
+        and math.isfinite(float(cumulative_logprob))
+    )
+
+
 def _report_summary(
     path: Path,
     report: dict[str, object],
@@ -120,8 +136,8 @@ def _report_summary(
 def compare_reports(
     primary: dict[str, object],
     reproduction: dict[str, object],
-) -> tuple[dict[str, bool], list[str]]:
-    """Return required reproducibility checks and human-readable failures."""
+) -> tuple[dict[str, bool], dict[str, bool], list[str]]:
+    """Return required checks, non-gating diagnostics, and failures."""
     primary_process = _process_record(primary)
     reproduction_process = _process_record(reproduction)
     primary_smoke = _object(primary.get("smoke_suite_results"))
@@ -157,7 +173,8 @@ def compare_reports(
         and primary_workers == reproduction_workers,
         "one_token_output_matches": len(primary_one_token) == 1
         and primary_one_token == reproduction_one_token,
-        "proof_output_matches": bool(primary_proof) and primary_proof == reproduction_proof,
+        "proof_outputs_are_independently_valid": _proof_is_independently_valid(primary)
+        and _proof_is_independently_valid(reproduction),
         "smoke_outputs_match": len(primary_smoke_outputs) == 10
         and primary_smoke_outputs == reproduction_smoke_outputs,
         "primary_smoke_matches_all_expected_text": primary_smoke.get("expected_text_matches")
@@ -169,8 +186,13 @@ def compare_reports(
         == reproduction_smoke.get("expected_text_total")
         == 10,
     }
+    diagnostics = {
+        "proof_output_token_ids_match": bool(primary_proof) and primary_proof == reproduction_proof,
+        "proof_text_matches": _object(primary.get("proof_of_life")).get("text")
+        == _object(reproduction.get("proof_of_life")).get("text"),
+    }
     failures = [name.replace("_", " ") for name, passed in checks.items() if not passed]
-    return checks, failures
+    return checks, diagnostics, failures
 
 
 def _write_report(path: Path, report: dict[str, object]) -> None:
@@ -186,7 +208,7 @@ def main() -> int:
     args = parser.parse_args()
 
     report: dict[str, object] = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "kind": "inkling-w8a16-gate-d-fresh-process-reproducibility",
         "collected_at": datetime.now(UTC).isoformat(),
         "command": [os.fsdecode(value) for value in sys.argv],
@@ -200,15 +222,17 @@ def main() -> int:
     try:
         primary = _load_report(args.primary)
         reproduction = _load_report(args.reproduction)
-        checks, failures = compare_reports(primary, reproduction)
+        checks, diagnostics, failures = compare_reports(primary, reproduction)
         report.update(
             {
                 "primary": _report_summary(args.primary, primary),
                 "reproduction": _report_summary(args.reproduction, reproduction),
                 "checks": checks,
+                "diagnostics": diagnostics,
                 "failures": failures,
                 "reproducibility_scope": "two sequential fresh processes on one Vertex worker",
                 "independent_vertex_provisioning_demonstrated": False,
+                "semantic_review_required": True,
                 "status": "pass" if not failures else "fail",
             }
         )

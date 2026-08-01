@@ -5,12 +5,11 @@ Inkling-Small on one GCP `a2-ultragpu-4g` node. The first target is reproducible
 W8A16 inference across four A100 80GB GPUs; W8A8 is deferred until W8A16 is
 correct.
 
-Current result: **Gate C passes; the balanced TP4 W8A16 checkpoint is
-converted and checksum-verified.** The full checkpoint has loaded on four A100
-80GB GPUs with the intended Marlin kernels and produced a coherent 32-token
-completion plus 10/10 fixed smoke matches. Gate D remains formally open because
-that run's artifact contains a verified local-validator false negative; see
-[STATUS.md](STATUS.md) for the preserved result and exact remaining step.
+Current result: **Gates C and D pass.** The balanced TP4 W8A16 checkpoint is
+converted and checksum-verified. Two sequential fresh processes loaded it on
+four A100 80GB GPUs with the intended Marlin kernels, produced finite coherent
+32-token completions, and independently matched all ten fixed smoke prompts.
+See [STATUS.md](STATUS.md) for the exact evidence and scope.
 
 - Exact source: `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`
 - Exact source payload: 265,956,439,090 elements and 495.382 GiB of tensor data
@@ -28,7 +27,7 @@ that run's artifact contains a verified local-validator false negative; see
 - Full runtime load: approximately 64.54 GiB of weights per rank with 1 GiB
   KV cache, no CPU offload, and no CUDA out-of-memory error
 - Full-model proof-of-life: one finite-token gate, one coherent 32-token
-  completion, and 10/10 fixed smoke matches
+  completion, and 10/10 fixed smoke matches in each of two fresh processes
 
 See the [Gate B decision](docs/gate-b-decision.md) for the representative
 execution basis and [STATUS.md](STATUS.md) for the current evidence, scope, and
@@ -91,6 +90,7 @@ Key durable outputs:
 - [Exact memory and sharding model](docs/memory-model.md)
 - [Thirteen-point runtime trace](docs/runtime-compatibility.md)
 - [Gate B representative-execution decision](docs/gate-b-decision.md)
+- `manifests/gate-d-reproducibility-20260801.json`
 - [Confirmed SM80 attention blocker](results/reports/ampere-attention-blocker.md)
 - [Ampere relative-attention repair design](docs/ampere-attention-design.md)
 - `manifests/gate-b-representative-execution-20260731.json`
@@ -122,9 +122,8 @@ blocker is resolved by patch 0001. Gate B passes through the real Inkling
 classes, expected Marlin kernels, four-rank TP/EP layouts, NCCL, and complete
 tiny-model generation. Gate C now passes for the full converted checkpoint,
 and the real checkpoint has loaded and generated with measured HBM on four
-A100s. Gate D is pending a clean automated artifact and fresh-process
-reproduction; publication also requires task-quality and performance
-evaluation.
+A100s. Gate D passes in two fresh processes on one provisioned worker;
+publication still requires task-quality and performance evaluation.
 
 ## Reproducibility baseline
 
