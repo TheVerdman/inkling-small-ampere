@@ -132,6 +132,9 @@ MARLIN_SCALE_PATCH_SHA256="$(
 )"
 SMOKE_SUITE_SHA256="$(sha256 configs/evaluation/gate-d-text-smoke-v1.json)"
 SERVING_CONFIG_SHA256="$(sha256 configs/serving/proof-of-life.json)"
+GATE_D_PROBE_SHA256="$(sha256 scripts/gpu/full_checkpoint_load_probe.py)"
+REPRODUCTION_COMPARATOR_SHA256="$(sha256 scripts/gpu/compare_gate_d_reports.py)"
+INSPECTION_CALLBACKS_SHA256="$(sha256 src/inkling_ampere/runtime/inspection_callbacks.py)"
 SOURCE_MODEL="$(jq -r '.repository' manifests/source-checkpoint.json)"
 SOURCE_REVISION="$(jq -r '.revision' manifests/source-checkpoint.json)"
 RUN_MANIFEST_CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -157,6 +160,9 @@ jq -n \
   --arg tensor_inventory_sha256 "${TENSOR_INVENTORY_SHA256}" \
   --arg smoke_suite_sha256 "${SMOKE_SUITE_SHA256}" \
   --arg serving_config_sha256 "${SERVING_CONFIG_SHA256}" \
+  --arg gate_d_probe_sha256 "${GATE_D_PROBE_SHA256}" \
+  --arg reproduction_comparator_sha256 "${REPRODUCTION_COMPARATOR_SHA256}" \
+  --arg inspection_callbacks_sha256 "${INSPECTION_CALLBACKS_SHA256}" \
   --arg structural_report_sha256 "${PRIOR_STRUCTURAL_REPORT_SHA256}" \
   --arg conversion_manifest_sha256 "${PRIOR_CONVERSION_MANIFEST_SHA256}" \
   --arg conversion_plan_sha256 "${PRIOR_CONVERSION_PLAN_SHA256}" \
@@ -189,6 +195,13 @@ jq -n \
       disable_retries: true,
       restart_job_on_worker_restart: false
     },
+    gate_d_execution: {
+      planned_processes: 2,
+      process_isolation: "sequential-fresh-python-processes",
+      primary_artifact: "gate-d-proof-of-life.json",
+      reproduction_artifact: "gate-d-proof-of-life-reproduction.json",
+      summary_artifact: "gate-d-reproducibility-summary.json"
+    },
     source_bundle: {
       uri: $source_bundle_object,
       sha256: $source_bundle_sha256
@@ -197,6 +210,9 @@ jq -n \
       tensor_inventory_sha256: $tensor_inventory_sha256,
       smoke_suite_sha256: $smoke_suite_sha256,
       serving_config_sha256: $serving_config_sha256,
+      gate_d_probe_sha256: $gate_d_probe_sha256,
+      reproduction_comparator_sha256: $reproduction_comparator_sha256,
+      inspection_callbacks_sha256: $inspection_callbacks_sha256,
       structural_report_sha256: $structural_report_sha256,
       conversion_manifest_sha256: $conversion_manifest_sha256,
       conversion_plan_sha256: $conversion_plan_sha256,
@@ -332,6 +348,7 @@ workerPoolSpecs:
         HARNESS_PREFLIGHT_REPORT="\${WORK_ROOT}/gate-d-harness-preflight.json"
         if ! python3 scripts/gpu/validate_gate_d_harness.py \
           --probe scripts/gpu/full_checkpoint_load_probe.py \
+          --reproduction-comparator scripts/gpu/compare_gate_d_reports.py \
           --smoke-suite configs/evaluation/gate-d-text-smoke-v1.json \
           --serving-config configs/serving/proof-of-life.json \
           --output "\${HARNESS_PREFLIGHT_REPORT}"; then
@@ -564,27 +581,100 @@ workerPoolSpecs:
         export VLLM_WORKER_MULTIPROC_METHOD=spawn
         export VLLM_ALLOW_INSECURE_SERIALIZATION=1
         export ENABLE_EXPERT_PARALLEL=0
-        LOAD_REPORT="\${OUTPUT_CHECKPOINT}/gate-d-proof-of-life.json"
-        if ! python3 scripts/gpu/full_checkpoint_load_probe.py \
+        PRIMARY_REPORT="\${OUTPUT_CHECKPOINT}/gate-d-proof-of-life.json"
+        REPRODUCTION_REPORT="\${OUTPUT_CHECKPOINT}/gate-d-proof-of-life-reproduction.json"
+        REPRODUCIBILITY_SUMMARY="\${OUTPUT_CHECKPOINT}/gate-d-reproducibility-summary.json"
+        PRIMARY_PROCESS_RUN_ID="\$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+        REPRODUCTION_PROCESS_RUN_ID="\$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+
+        if python3 scripts/gpu/full_checkpoint_load_probe.py \
           --model-dir "\${OUTPUT_CHECKPOINT}" \
           --smoke-suite configs/evaluation/gate-d-text-smoke-v1.json \
           --serving-config configs/serving/proof-of-life.json \
-          --output "\${LOAD_REPORT}"; then
+          --phase primary \
+          --process-run-id "\${PRIMARY_PROCESS_RUN_ID}" \
+          --output "\${PRIMARY_REPORT}"; then
           upload_file \
-            "\${LOAD_REPORT}" \
+            "\${PRIMARY_REPORT}" \
+            "\${ATTEMPT_PREFIX}/gate-d-proof-of-life.json" \
+            application/json
+          upload_file \
+            "\${PRIMARY_REPORT}" \
+            "\${RUN_PREFIX}/gate-d-proof-of-life.json" \
+            application/json
+        else
+          upload_file \
+            "\${PRIMARY_REPORT}" \
             "\${ATTEMPT_PREFIX}/gate-d-proof-of-life.json" \
             application/json || true
           upload_file \
-            "\${LOAD_REPORT}" \
+            "\${PRIMARY_REPORT}" \
             "\${RUN_PREFIX}/gate-d-proof-of-life.json" \
             application/json || true
           upload_worker_logs
           exit 31
         fi
-        upload_file \
-          "\${LOAD_REPORT}" \
-          "\${RUN_PREFIX}/gate-d-proof-of-life.json" \
-          application/json
+
+        REPRODUCTION_STATUS=0
+        if python3 scripts/gpu/full_checkpoint_load_probe.py \
+          --model-dir "\${OUTPUT_CHECKPOINT}" \
+          --smoke-suite configs/evaluation/gate-d-text-smoke-v1.json \
+          --serving-config configs/serving/proof-of-life.json \
+          --phase reproduction \
+          --process-run-id "\${REPRODUCTION_PROCESS_RUN_ID}" \
+          --output "\${REPRODUCTION_REPORT}"; then
+          upload_file \
+            "\${REPRODUCTION_REPORT}" \
+            "\${ATTEMPT_PREFIX}/gate-d-proof-of-life-reproduction.json" \
+            application/json
+          upload_file \
+            "\${REPRODUCTION_REPORT}" \
+            "\${RUN_PREFIX}/gate-d-proof-of-life-reproduction.json" \
+            application/json
+        else
+          REPRODUCTION_STATUS=1
+          upload_file \
+            "\${REPRODUCTION_REPORT}" \
+            "\${ATTEMPT_PREFIX}/gate-d-proof-of-life-reproduction.json" \
+            application/json || true
+          upload_file \
+            "\${REPRODUCTION_REPORT}" \
+            "\${RUN_PREFIX}/gate-d-proof-of-life-reproduction.json" \
+            application/json || true
+        fi
+
+        COMPARISON_STATUS=0
+        if python3 scripts/gpu/compare_gate_d_reports.py \
+          --primary "\${PRIMARY_REPORT}" \
+          --reproduction "\${REPRODUCTION_REPORT}" \
+          --output "\${REPRODUCIBILITY_SUMMARY}"; then
+          upload_file \
+            "\${REPRODUCIBILITY_SUMMARY}" \
+            "\${ATTEMPT_PREFIX}/gate-d-reproducibility-summary.json" \
+            application/json
+          upload_file \
+            "\${REPRODUCIBILITY_SUMMARY}" \
+            "\${RUN_PREFIX}/gate-d-reproducibility-summary.json" \
+            application/json
+        else
+          COMPARISON_STATUS=1
+          upload_file \
+            "\${REPRODUCIBILITY_SUMMARY}" \
+            "\${ATTEMPT_PREFIX}/gate-d-reproducibility-summary.json" \
+            application/json || true
+          upload_file \
+            "\${REPRODUCIBILITY_SUMMARY}" \
+            "\${RUN_PREFIX}/gate-d-reproducibility-summary.json" \
+            application/json || true
+        fi
+        if [[ "\${REPRODUCTION_STATUS}" -ne 0 ]]; then
+          upload_worker_logs
+          exit 32
+        fi
+        if [[ "\${COMPARISON_STATUS}" -ne 0 ]]; then
+          upload_worker_logs
+          exit 33
+        fi
       fi
 
       upload_worker_logs
@@ -734,6 +824,12 @@ if [[ "${MODE}" == "full" || "${MODE}" == "load" ]]; then
   download_artifact \
     "${RUN_PREFIX}/gate-d-proof-of-life.json" \
     "${LOCAL_PREFIX}-gate-d-proof-of-life.json"
+  download_artifact \
+    "${RUN_PREFIX}/gate-d-proof-of-life-reproduction.json" \
+    "${LOCAL_PREFIX}-gate-d-proof-of-life-reproduction.json"
+  download_artifact \
+    "${RUN_PREFIX}/gate-d-reproducibility-summary.json" \
+    "${LOCAL_PREFIX}-gate-d-reproducibility-summary.json"
 fi
 if [[ "${MODE}" == "full" ]]; then
   download_artifact \

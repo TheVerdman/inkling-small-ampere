@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -10,6 +11,7 @@ from typing import cast
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _VALIDATOR = _REPOSITORY_ROOT / "scripts/gpu/validate_gate_d_harness.py"
 _PROBE = _REPOSITORY_ROOT / "scripts/gpu/full_checkpoint_load_probe.py"
+_REPRODUCTION_COMPARATOR = _REPOSITORY_ROOT / "scripts/gpu/compare_gate_d_reports.py"
 _SMOKE_SUITE = _REPOSITORY_ROOT / "configs/evaluation/gate-d-text-smoke-v1.json"
 _SERVING_CONFIG = _REPOSITORY_ROOT / "configs/serving/proof-of-life.json"
 
@@ -35,6 +37,8 @@ def _run_validator(
             str(_VALIDATOR),
             "--probe",
             str(probe),
+            "--reproduction-comparator",
+            str(_REPRODUCTION_COMPARATOR),
             "--smoke-suite",
             str(_SMOKE_SUITE),
             "--serving-config",
@@ -56,6 +60,11 @@ def test_gate_d_harness_imports_with_packaged_vertex_python_path(tmp_path: Path)
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert report["status"] == "pass"
+    assert report["reproduction_comparator"] == {
+        "import": "pass",
+        "path": str(_REPRODUCTION_COMPARATOR),
+        "sha256": hashlib.sha256(_REPRODUCTION_COMPARATOR.read_bytes()).hexdigest(),
+    }
     sys_path = cast(list[str], report["sys_path"])
     assert str(_REPOSITORY_ROOT) not in sys_path
     callbacks = cast(list[dict[str, object]], report["worker_callbacks"])

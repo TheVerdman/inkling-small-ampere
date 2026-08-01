@@ -30,8 +30,7 @@ def _write_report(path: Path, report: dict[str, object]) -> None:
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _load_probe(path: Path) -> ModuleType:
-    module_name = "_inkling_gate_d_probe_preflight"
+def _load_module(path: Path, module_name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not create an import specification for {path}")
@@ -45,6 +44,7 @@ def main() -> int:
     """Import the exact probe, validate its configs, and pickle worker callbacks."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--probe", type=Path, required=True)
+    parser.add_argument("--reproduction-comparator", type=Path, required=True)
     parser.add_argument("--smoke-suite", type=Path, required=True)
     parser.add_argument("--serving-config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -60,6 +60,9 @@ def main() -> int:
         "sys_path": list(sys.path),
         "probe": {
             "path": str(args.probe),
+        },
+        "reproduction_comparator": {
+            "path": str(args.reproduction_comparator),
         },
         "smoke_suite": {
             "path": str(args.smoke_suite),
@@ -81,7 +84,13 @@ def main() -> int:
             "path": str(args.serving_config),
             "sha256": _sha256_file(args.serving_config),
         }
-        module = _load_probe(args.probe)
+        module = _load_module(args.probe, "_inkling_gate_d_probe_preflight")
+        comparator = _load_module(
+            args.reproduction_comparator,
+            "_inkling_gate_d_reproduction_comparator_preflight",
+        )
+        if not callable(getattr(comparator, "compare_reports", None)):
+            raise RuntimeError("reproduction comparator does not export compare_reports")
         suite = module._load_smoke_suite(args.smoke_suite)
         serving = module._load_serving_config(args.serving_config)
         callbacks = module._worker_callback_preflight()
@@ -96,6 +105,11 @@ def main() -> int:
             {
                 "status": "pass",
                 "probe_import": "pass",
+                "reproduction_comparator": {
+                    "path": str(args.reproduction_comparator),
+                    "sha256": _sha256_file(args.reproduction_comparator),
+                    "import": "pass",
+                },
                 "suite_id": suite.suite_id,
                 "smoke_prompt_count": len(suite.smoke_prompts),
                 "serving": asdict(serving),

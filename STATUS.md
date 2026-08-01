@@ -21,8 +21,10 @@ The failed artifact is not silently reclassified as a Gate D pass. A future,
 explicitly authorized fresh run is still required to record a clean automated
 Gate D pass and establish reproducibility.
 
-There is **no active Inkling Vertex job**. No retry or follow-on job is
-authorized or queued.
+There is **no active Inkling Vertex job**. On 2026-07-31, the user explicitly
+authorized one follow-on job: a single no-retry Vertex allocation that runs a
+clean primary Gate D process followed by one fresh-process reproduction. It is
+not an automatic retry and it must not expand into a second Vertex job.
 
 ## Latest authorized jobs
 
@@ -215,11 +217,12 @@ All failed and cancelled runs remain part of the evidence record.
 
 ## Remaining blockers and open questions
 
-1. Under future explicit authorization, run the corrected source once against
-   the existing immutable checkpoint to produce a clean formal Gate D artifact.
-   Do not reconvert weights.
-2. Repeat the clean proof from a fresh process before declaring Gate D
-   reproducible.
+1. Execute the one authorized no-retry Vertex job against the existing
+   immutable checkpoint. It must run a clean primary Gate D process, terminate
+   that process, and run one fresh-process reproduction without reconverting
+   weights.
+2. Require both independent process reports and their comparison summary to
+   pass before declaring Gate D reproducible.
 3. Only then proceed to comparative quality and performance work.
 4. Router stability, reasoning controls, tools, image, audio, long context,
    batching, prefix caching, CUDA graphs, MTP, LoRA, and production serving
@@ -238,8 +241,9 @@ The post-run validation suite passed at `2026-07-31T22:47:14-04:00`:
 - Every repository JSON document, including ignored raw evidence, parsed
   successfully.
 
-## Stop state
+## Authorized next action
 
-Stop here. Preserve the immutable checkpoint and all raw evidence. Do not
-submit another Vertex job, retry, or follow-on run without fresh explicit
-authorization, and do not assume banked usage or a billing reset is available.
+Preserve the immutable checkpoint and all raw evidence. Submit at most the one
+explicitly authorized no-retry Vertex job described above, collect all three
+Gate D artifacts, then stop. Do not submit another job or retry, and do not
+assume banked usage or a billing reset is available.

@@ -7,9 +7,10 @@ correct.
 
 Current result: **Gate C passes; the balanced TP4 W8A16 checkpoint is
 converted and checksum-verified.** The full checkpoint has loaded on four A100
-80GB GPUs with the intended Marlin kernels, but Gate D remains open because no
-full-model completion has been captured. See [STATUS.md](STATUS.md) for the
-nightly stop state and exact blocker.
+80GB GPUs with the intended Marlin kernels and produced a coherent 32-token
+completion plus 10/10 fixed smoke matches. Gate D remains formally open because
+that run's artifact contains a verified local-validator false negative; see
+[STATUS.md](STATUS.md) for the preserved result and exact remaining step.
 
 - Exact source: `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`
 - Exact source payload: 265,956,439,090 elements and 495.382 GiB of tensor data
@@ -26,6 +27,8 @@ nightly stop state and exact blocker.
   data; all tensor hashes and sampled reconstruction checks pass
 - Full runtime load: approximately 64.54 GiB of weights per rank with 1 GiB
   KV cache, no CPU offload, and no CUDA out-of-memory error
+- Full-model proof-of-life: one finite-token gate, one coherent 32-token
+  completion, and 10/10 fixed smoke matches
 
 See the [Gate B decision](docs/gate-b-decision.md) for the representative
 execution basis and [STATUS.md](STATUS.md) for the current evidence, scope, and
@@ -118,9 +121,10 @@ Gate A's memory model passes for balanced TP4, and its original attention
 blocker is resolved by patch 0001. Gate B passes through the real Inkling
 classes, expected Marlin kernels, four-rank TP/EP layouts, NCCL, and complete
 tiny-model generation. Gate C now passes for the full converted checkpoint,
-and the real checkpoint has loaded with measured HBM on four A100s. Gate D is
-still blocked on capturing and reproducing a coherent full-model completion;
-publication also requires task-quality and performance evaluation.
+and the real checkpoint has loaded and generated with measured HBM on four
+A100s. Gate D is pending a clean automated artifact and fresh-process
+reproduction; publication also requires task-quality and performance
+evaluation.
 
 ## Reproducibility baseline
 

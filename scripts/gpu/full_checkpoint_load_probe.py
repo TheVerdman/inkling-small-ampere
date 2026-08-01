@@ -379,6 +379,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--phase", choices=("primary", "reproduction"), required=True)
+    parser.add_argument("--process-run-id", required=True)
     parser.add_argument(
         "--smoke-suite",
         type=Path,
@@ -390,12 +392,22 @@ def main() -> int:
         default=Path("configs/serving/proof-of-life.json"),
     )
     args = parser.parse_args()
+    if len(args.process_run_id) != 32 or any(
+        character not in "0123456789abcdef" for character in args.process_run_id
+    ):
+        parser.error("--process-run-id must be 32 lowercase hexadecimal characters")
     report: dict[str, object] = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "kind": "inkling-w8a16-gate-d-text-proof-of-life",
         "collected_at": datetime.now(UTC).isoformat(),
         "model_dir": str(args.model_dir),
         "command": [sys.executable, *sys.argv],
+        "process": {
+            "phase": args.phase,
+            "run_id": args.process_run_id,
+            "pid": os.getpid(),
+            "parent_pid": os.getppid(),
+        },
         "smoke_suite": {
             "path": str(args.smoke_suite),
         },
