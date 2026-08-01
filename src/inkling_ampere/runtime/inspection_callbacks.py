@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch  # type: ignore[import-not-found]
 
 EXPECTED_LAYERS = 42
+EXPECTED_LM_HEAD_QUANT_METHOD = "UnquantizedEmbeddingMethod"
 
 
 def _method_record(module: torch.nn.Module) -> dict[str, object]:
@@ -50,6 +51,12 @@ def _cuda_memory() -> dict[str, object]:
         "driver_free_bytes": free_bytes,
         "driver_total_bytes": total_bytes,
     }
+
+
+def _lm_head_failure(method_name: object) -> str | None:
+    if method_name == EXPECTED_LM_HEAD_QUANT_METHOD:
+        return None
+    return f"lm_head unexpectedly uses {method_name}"
 
 
 def inspect_model(model: torch.nn.Module) -> dict[str, object]:
@@ -110,8 +117,9 @@ def inspect_model(model: torch.nn.Module) -> dict[str, object]:
         layers.append(layer_record)
 
     lm_head = _method_record(model.lm_head)
-    if lm_head["quant_method"] != "UnquantizedLinearMethod":
-        failures.append(f"lm_head unexpectedly uses {lm_head['quant_method']}")
+    lm_head_failure = _lm_head_failure(lm_head["quant_method"])
+    if lm_head_failure is not None:
+        failures.append(lm_head_failure)
     checked_values, nonfinite_parameters = _sample_parameter_finiteness(model)
     failures.extend(f"non-finite parameter sample: {name}" for name in nonfinite_parameters)
     device = torch.cuda.current_device()

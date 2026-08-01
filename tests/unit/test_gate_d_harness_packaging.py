@@ -14,17 +14,21 @@ _SMOKE_SUITE = _REPOSITORY_ROOT / "configs/evaluation/gate-d-text-smoke-v1.json"
 _SERVING_CONFIG = _REPOSITORY_ROOT / "configs/serving/proof-of-life.json"
 
 
+def _packaged_environment(tmp_path: Path) -> dict[str, str]:
+    stubs = tmp_path / "runtime-stubs"
+    stubs.mkdir()
+    (stubs / "torch.py").write_text('"""Minimal import-only torch stub."""\n')
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join([str(stubs), str(_REPOSITORY_ROOT / "src")])
+    return environment
+
+
 def _run_validator(
     tmp_path: Path,
     *,
     probe: Path = _PROBE,
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, object]]:
-    stubs = tmp_path / "runtime-stubs"
-    stubs.mkdir()
-    (stubs / "torch.py").write_text('"""Minimal import-only torch stub."""\n')
     output = tmp_path / "gate-d-harness-preflight.json"
-    environment = dict(os.environ)
-    environment["PYTHONPATH"] = os.pathsep.join([str(stubs), str(_REPOSITORY_ROOT / "src")])
     completed = subprocess.run(
         [
             sys.executable,
@@ -39,7 +43,7 @@ def _run_validator(
             str(output),
         ],
         cwd=_REPOSITORY_ROOT,
-        env=environment,
+        env=_packaged_environment(tmp_path),
         check=False,
         capture_output=True,
         text=True,
@@ -79,3 +83,25 @@ def test_gate_d_harness_writes_failure_report_for_import_error(tmp_path: Path) -
     assert completed.returncode == 1
     assert report["status"] == "fail"
     assert report["error_type"] == "FileNotFoundError"
+
+
+def test_lm_head_validation_matches_pinned_vllm(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from inkling_ampere.runtime.inspection_callbacks import "
+            "EXPECTED_LM_HEAD_QUANT_METHOD, _lm_head_failure; "
+            "assert EXPECTED_LM_HEAD_QUANT_METHOD == 'UnquantizedEmbeddingMethod'; "
+            "assert _lm_head_failure('UnquantizedEmbeddingMethod') is None; "
+            "assert _lm_head_failure('UnquantizedLinearMethod') == "
+            "'lm_head unexpectedly uses UnquantizedLinearMethod'",
+        ],
+        cwd=_REPOSITORY_ROOT,
+        env=_packaged_environment(tmp_path),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
