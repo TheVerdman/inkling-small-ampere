@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import torch
+import torch  # type: ignore[import-not-found]
 
 EXPECTED_LAYERS = 42
 
@@ -54,7 +54,7 @@ def _cuda_memory() -> dict[str, object]:
 
 def inspect_model(model: torch.nn.Module) -> dict[str, object]:
     """Collect loader-path evidence inside each TP worker."""
-    from vllm.distributed import get_tensor_model_parallel_rank
+    from vllm.distributed import get_tensor_model_parallel_rank  # type: ignore[import-not-found]
 
     failures: list[str] = []
     layers: list[dict[str, object]] = []

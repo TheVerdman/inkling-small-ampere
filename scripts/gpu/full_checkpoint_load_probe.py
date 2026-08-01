@@ -24,20 +24,23 @@ import torch
 
 from inkling_ampere.manifests import load_json_object
 from inkling_ampere.quantization.safetensors import sha256_file
-from scripts.gpu.inspection_callbacks import (
+from inkling_ampere.runtime.inspection_callbacks import (
     inspect_model as inspect_model_in_worker,
 )
-from scripts.gpu.inspection_callbacks import (
+from inkling_ampere.runtime.inspection_callbacks import (
     inspect_runtime_memory as inspect_runtime_memory_in_worker,
 )
 
-_EXPECTED_LAYERS = 42
-_EXPECTED_WORLD_SIZE = 4
-_KV_CACHE_BYTES = 1024 * 1024 * 1024
 _ENVIRONMENT_KEYS = (
+    "ATTEMPT_ID",
     "CUDA_DEVICE_ORDER",
     "ENABLE_EXPERT_PARALLEL",
     "LAMPORT_RS_SCONV",
+    "PLAN_ID",
+    "PROJECT_COMMIT",
+    "RUN_MANIFEST_SHA256",
+    "RUN_PREFIX",
+    "SOURCE_BUNDLE_SHA256",
     "TOKENIZERS_PARALLELISM",
     "VLLM_ALLOW_INSECURE_SERIALIZATION",
     "VLLM_WORKER_MULTIPROC_METHOD",
@@ -65,6 +68,23 @@ class SmokeSuite:
     smoke_prompts: tuple[PromptSpec, ...]
 
 
+@dataclass(frozen=True)
+class ServingConfig:
+    """Versioned minimal Gate D runtime configuration."""
+
+    tensor_parallel_size: int
+    expert_parallel_size: int
+    dtype: str
+    max_model_len: int
+    max_num_seqs: int
+    max_num_batched_tokens: int
+    block_size: int
+    kv_cache_memory_bytes: int
+    enforce_eager: bool
+    enable_prefix_caching: bool
+    cpu_offload_gb: float
+
+
 def _required_string(value: object, description: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{description} must be a non-empty string")
@@ -74,6 +94,24 @@ def _required_string(value: object, description: str) -> str:
 def _required_positive_integer(value: object, description: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError(f"{description} must be a positive integer")
+    return value
+
+
+def _required_boolean(value: object, description: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{description} must be a boolean")
+    return value
+
+
+def _required_nonnegative_number(value: object, description: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{description} must be a nonnegative number")
+    return float(value)
+
+
+def _required_object(value: object, description: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise ValueError(f"{description} must be an object with string keys")
     return value
 
 
@@ -133,139 +171,92 @@ def _load_smoke_suite(path: Path) -> SmokeSuite:
     )
 
 
-def _method_record(module: torch.nn.Module) -> dict[str, object]:
-    method = getattr(module, "quant_method", None)
-    scheme = getattr(module, "scheme", None)
-    backend = getattr(scheme, "wna16_backend", None)
-    return {
-        "module_class": type(module).__name__,
-        "quant_method": type(method).__name__ if method is not None else None,
-        "scheme": type(scheme).__name__ if scheme is not None else None,
-        "wna16_backend": (getattr(backend, "value", str(backend)) if backend is not None else None),
-    }
+def _load_serving_config(path: Path) -> ServingConfig:
+    value = load_json_object(path)
+    runtime = _required_object(value.get("runtime"), "runtime")
+    status = _required_string(value.get("status"), "status")
+    if status not in {"gate-d-candidate", "gate-d-validated"}:
+        raise ValueError(f"serving configuration status is not runnable: {status}")
 
+    gpu_count = _required_positive_integer(value.get("gpu_count"), "gpu_count")
+    tensor_parallel_size = _required_positive_integer(
+        value.get("tensor_parallel_size"),
+        "tensor_parallel_size",
+    )
+    expert_parallel_size = _required_positive_integer(
+        value.get("expert_parallel_size"),
+        "expert_parallel_size",
+    )
+    max_model_len = _required_positive_integer(value.get("max_model_len"), "max_model_len")
+    max_num_seqs = _required_positive_integer(value.get("max_num_seqs"), "max_num_seqs")
+    max_num_batched_tokens = _required_positive_integer(
+        value.get("max_num_batched_tokens"),
+        "max_num_batched_tokens",
+    )
+    block_size = _required_positive_integer(value.get("block_size"), "block_size")
+    kv_cache_memory_bytes = _required_positive_integer(
+        value.get("kv_cache_memory_bytes"),
+        "kv_cache_memory_bytes",
+    )
+    dtype = _required_string(value.get("dtype"), "dtype")
+    enforce_eager = _required_boolean(runtime.get("eager"), "runtime.eager")
+    enable_prefix_caching = _required_boolean(
+        runtime.get("prefix_caching"),
+        "runtime.prefix_caching",
+    )
+    cpu_offload_gb = _required_nonnegative_number(
+        runtime.get("cpu_offload_gib"),
+        "runtime.cpu_offload_gib",
+    )
 
-def _sample_parameter_finiteness(model: torch.nn.Module) -> tuple[int, list[str]]:
-    checked = 0
-    failures: list[str] = []
-    for name, parameter in model.named_parameters():
-        if not parameter.is_floating_point() or parameter.numel() == 0:
-            continue
-        flat = parameter.detach().reshape(-1)
-        indices = torch.tensor(
-            sorted({0, flat.numel() // 2, flat.numel() - 1}),
-            device=flat.device,
-        )
-        if not bool(torch.isfinite(flat[indices]).all().item()):
-            failures.append(name)
-        checked += len(indices)
-    return checked, failures
-
-
-def _cuda_memory() -> dict[str, object]:
-    device = torch.cuda.current_device()
-    free_bytes, total_bytes = torch.cuda.mem_get_info(device)
-    return {
-        "device_index": device,
-        "allocated_bytes": torch.cuda.memory_allocated(device),
-        "reserved_bytes": torch.cuda.memory_reserved(device),
-        "peak_allocated_bytes": torch.cuda.max_memory_allocated(device),
-        "peak_reserved_bytes": torch.cuda.max_memory_reserved(device),
-        "driver_free_bytes": free_bytes,
-        "driver_total_bytes": total_bytes,
-    }
-
-
-def inspect_model(model: torch.nn.Module) -> dict[str, object]:
-    """Collect loader-path evidence inside each TP worker."""
-    from vllm.distributed import get_tensor_model_parallel_rank
-
-    failures: list[str] = []
-    layers: list[dict[str, object]] = []
-    if len(model.model.layers) != _EXPECTED_LAYERS:
-        failures.append(
-            f"expected {_EXPECTED_LAYERS} decoder layers, got {len(model.model.layers)}"
-        )
-    for layer_index, layer in enumerate(model.model.layers):
-        qkvr = _method_record(layer.attn.qkvr)
-        wo_ud = _method_record(layer.attn.wo_ud)
-        if qkvr["scheme"] != "CompressedTensorsWNA16":
-            failures.append(f"layer {layer_index} qkvr scheme is {qkvr['scheme']}")
-        if wo_ud["scheme"] != "CompressedTensorsWNA16":
-            failures.append(f"layer {layer_index} wo_ud scheme is {wo_ud['scheme']}")
-        layer_record: dict[str, object] = {
-            "layer_index": layer_index,
-            "attention_backend": layer.attn.get_attn_backend().__name__,
-            "ampere_flex_selected": bool(layer.attn._use_flex_attention),
-            "qkvr": qkvr,
-            "wo_ud": wo_ud,
-            "mlp_class": type(layer.mlp).__name__,
-        }
-        if layer.attn.get_attn_backend().__name__ != "FlexAttentionBackend":
-            failures.append(f"layer {layer_index} did not select FlexAttention")
-        if layer_index < 2:
-            gate_up = _method_record(layer.mlp.gate_up_proj)
-            down = _method_record(layer.mlp.down_proj)
-            layer_record["dense_gate_up"] = gate_up
-            layer_record["dense_down"] = down
-            if gate_up["scheme"] != "CompressedTensorsWNA16":
-                failures.append(f"layer {layer_index} dense gate/up is not WNA16")
-            if down["scheme"] != "CompressedTensorsWNA16":
-                failures.append(f"layer {layer_index} dense down is not WNA16")
-        else:
-            routed = layer.mlp.experts.routed_experts
-            method = getattr(routed, "quant_method", None)
-            backend = getattr(method, "wna16_backend", None)
-            routed_record = {
-                "module_class": type(routed).__name__,
-                "quant_method": type(method).__name__ if method is not None else None,
-                "wna16_backend": (
-                    getattr(backend, "value", str(backend)) if backend is not None else None
-                ),
-            }
-            layer_record["routed_experts"] = routed_record
-            layer_record["sink_experts_class"] = type(layer.mlp.sink_experts).__name__
-            if "WNA16Marlin" not in str(routed_record["quant_method"]):
-                failures.append(
-                    f"layer {layer_index} routed experts use {routed_record['quant_method']}"
-                )
-            if routed_record["wna16_backend"] != "MARLIN":
-                failures.append(
-                    f"layer {layer_index} routed backend is {routed_record['wna16_backend']}"
-                )
-        layers.append(layer_record)
-
-    lm_head = _method_record(model.lm_head)
-    if lm_head["quant_method"] != "UnquantizedLinearMethod":
-        failures.append(f"lm_head unexpectedly uses {lm_head['quant_method']}")
-    checked_values, nonfinite_parameters = _sample_parameter_finiteness(model)
-    failures.extend(f"non-finite parameter sample: {name}" for name in nonfinite_parameters)
-    device = torch.cuda.current_device()
-    return {
-        "tp_rank": get_tensor_model_parallel_rank(),
-        "device_name": torch.cuda.get_device_name(device),
-        "compute_capability": list(torch.cuda.get_device_capability(device)),
-        "local_parameter_count": sum(parameter.numel() for parameter in model.parameters()),
-        "local_parameter_bytes": sum(
-            parameter.numel() * parameter.element_size() for parameter in model.parameters()
+    expected_values: tuple[tuple[str, object, object], ...] = (
+        ("gpu_count", gpu_count, 4),
+        ("tensor_parallel_size", tensor_parallel_size, 4),
+        ("expert_parallel_size", expert_parallel_size, 1),
+        ("dtype", dtype, "bfloat16"),
+        ("max_model_len", max_model_len, 2048),
+        ("max_num_seqs", max_num_seqs, 1),
+        ("max_num_batched_tokens", max_num_batched_tokens, 2048),
+        ("block_size", block_size, 16),
+        ("kv_cache_memory_bytes", kv_cache_memory_bytes, 1024 * 1024 * 1024),
+        ("runtime.eager", enforce_eager, True),
+        ("runtime.prefix_caching", enable_prefix_caching, False),
+        ("runtime.cpu_offload_gib", cpu_offload_gb, 0.0),
+        (
+            "runtime.cuda_graphs",
+            _required_boolean(runtime.get("cuda_graphs"), "runtime.cuda_graphs"),
+            False,
         ),
-        "sampled_floating_values": checked_values,
-        "lm_head": lm_head,
-        "layers": layers,
-        "failures": failures,
-        "cuda_memory": _cuda_memory(),
-    }
+        (
+            "runtime.speculative_decoding",
+            _required_boolean(
+                runtime.get("speculative_decoding"),
+                "runtime.speculative_decoding",
+            ),
+            False,
+        ),
+    )
+    mismatches = [
+        f"{name} is {actual!r}, expected {expected!r}"
+        for name, actual, expected in expected_values
+        if actual != expected
+    ]
+    if mismatches:
+        raise ValueError("unsupported Gate D serving configuration: " + "; ".join(mismatches))
 
-
-def inspect_runtime_memory(_model: torch.nn.Module) -> dict[str, object]:
-    """Capture post-generation CUDA memory inside each TP worker."""
-    from vllm.distributed import get_tensor_model_parallel_rank
-
-    torch.cuda.synchronize()
-    return {
-        "tp_rank": get_tensor_model_parallel_rank(),
-        "cuda_memory": _cuda_memory(),
-    }
+    return ServingConfig(
+        tensor_parallel_size=tensor_parallel_size,
+        expert_parallel_size=expert_parallel_size,
+        dtype=dtype,
+        max_model_len=max_model_len,
+        max_num_seqs=max_num_seqs,
+        max_num_batched_tokens=max_num_batched_tokens,
+        block_size=block_size,
+        kv_cache_memory_bytes=kv_cache_memory_bytes,
+        enforce_eager=enforce_eager,
+        enable_prefix_caching=enable_prefix_caching,
+        cpu_offload_gb=cpu_offload_gb,
+    )
 
 
 def _host_memory_snapshot() -> dict[str, object]:
@@ -393,67 +384,91 @@ def main() -> int:
         type=Path,
         default=Path("configs/evaluation/gate-d-text-smoke-v1.json"),
     )
+    parser.add_argument(
+        "--serving-config",
+        type=Path,
+        default=Path("configs/serving/proof-of-life.json"),
+    )
     args = parser.parse_args()
-    suite = _load_smoke_suite(args.smoke_suite)
-    worker_callback_preflight = _worker_callback_preflight()
-
-    os.environ.setdefault("VLLM_ALLOW_INSECURE_SERIALIZATION", "1")
     report: dict[str, object] = {
         "schema_version": "1.0.0",
         "kind": "inkling-w8a16-gate-d-text-proof-of-life",
         "collected_at": datetime.now(UTC).isoformat(),
         "model_dir": str(args.model_dir),
-        "platform": platform.platform(),
-        "numpy_version": importlib.metadata.version("numpy"),
-        "scipy_version": importlib.metadata.version("scipy"),
-        "torch_version": torch.__version__,
-        "cuda_version": torch.version.cuda,
         "command": [sys.executable, *sys.argv],
-        "environment": {key: os.environ[key] for key in _ENVIRONMENT_KEYS if key in os.environ},
         "smoke_suite": {
             "path": str(args.smoke_suite),
-            "sha256": sha256_file(args.smoke_suite),
-            "suite_id": suite.suite_id,
-            "chat_template_kwargs": suite.chat_template_kwargs,
         },
-        "runtime_configuration": {
-            "tensor_parallel_size": _EXPECTED_WORLD_SIZE,
-            "dtype": "bfloat16",
-            "max_model_len": 2048,
-            "max_num_seqs": 1,
-            "max_num_batched_tokens": 2048,
-            "kv_cache_memory_bytes": _KV_CACHE_BYTES,
-            "enforce_eager": True,
-            "enable_prefix_caching": False,
-            "cpu_offload_gb": 0,
-            "seed": suite.seed,
-        },
-        "worker_callback_preflight": worker_callback_preflight,
-        "host_memory_before_initialization": _host_memory_snapshot(),
-        "patches": {
-            "flex_attention_sha256": os.environ["FLEX_PATCH_SHA256"],
-            "moe_loader_sha256": os.environ["MOE_LOADER_PATCH_SHA256"],
-            "marlin_scale_sha256": os.environ["MARLIN_SCALE_PATCH_SHA256"],
+        "serving_config": {
+            "path": str(args.serving_config),
         },
     }
     try:
+        suite = _load_smoke_suite(args.smoke_suite)
+        serving = _load_serving_config(args.serving_config)
+        worker_callback_preflight = _worker_callback_preflight()
+        os.environ.setdefault("VLLM_ALLOW_INSECURE_SERIALIZATION", "1")
+        report.update(
+            {
+                "platform": platform.platform(),
+                "numpy_version": importlib.metadata.version("numpy"),
+                "scipy_version": importlib.metadata.version("scipy"),
+                "torch_version": torch.__version__,
+                "cuda_version": torch.version.cuda,
+                "environment": {
+                    key: os.environ[key] for key in _ENVIRONMENT_KEYS if key in os.environ
+                },
+                "smoke_suite": {
+                    "path": str(args.smoke_suite),
+                    "sha256": sha256_file(args.smoke_suite),
+                    "suite_id": suite.suite_id,
+                    "chat_template_kwargs": suite.chat_template_kwargs,
+                },
+                "serving_config": {
+                    "path": str(args.serving_config),
+                    "sha256": sha256_file(args.serving_config),
+                },
+                "runtime_configuration": {
+                    "tensor_parallel_size": serving.tensor_parallel_size,
+                    "expert_parallel_size": serving.expert_parallel_size,
+                    "dtype": serving.dtype,
+                    "max_model_len": serving.max_model_len,
+                    "max_num_seqs": serving.max_num_seqs,
+                    "max_num_batched_tokens": serving.max_num_batched_tokens,
+                    "block_size": serving.block_size,
+                    "kv_cache_memory_bytes": serving.kv_cache_memory_bytes,
+                    "enforce_eager": serving.enforce_eager,
+                    "enable_prefix_caching": serving.enable_prefix_caching,
+                    "cpu_offload_gb": serving.cpu_offload_gb,
+                    "seed": suite.seed,
+                },
+                "worker_callback_preflight": worker_callback_preflight,
+                "host_memory_before_initialization": _host_memory_snapshot(),
+                "patches": {
+                    "flex_attention_sha256": os.environ["FLEX_PATCH_SHA256"],
+                    "moe_loader_sha256": os.environ["MOE_LOADER_PATCH_SHA256"],
+                    "marlin_scale_sha256": os.environ["MARLIN_SCALE_PATCH_SHA256"],
+                },
+            }
+        )
         from vllm import LLM, SamplingParams, TokensPrompt
 
         started = time.perf_counter()
         llm = LLM(
             model=str(args.model_dir),
-            tensor_parallel_size=_EXPECTED_WORLD_SIZE,
-            dtype="bfloat16",
+            tensor_parallel_size=serving.tensor_parallel_size,
+            dtype=serving.dtype,
             tokenizer_mode="hf",
-            enforce_eager=True,
-            enable_prefix_caching=False,
+            enforce_eager=serving.enforce_eager,
+            enable_prefix_caching=serving.enable_prefix_caching,
             disable_custom_all_reduce=True,
             distributed_executor_backend="mp",
-            max_model_len=2048,
-            max_num_seqs=1,
-            max_num_batched_tokens=2048,
-            kv_cache_memory_bytes=_KV_CACHE_BYTES,
-            cpu_offload_gb=0,
+            max_model_len=serving.max_model_len,
+            max_num_seqs=serving.max_num_seqs,
+            max_num_batched_tokens=serving.max_num_batched_tokens,
+            block_size=serving.block_size,
+            kv_cache_memory_bytes=serving.kv_cache_memory_bytes,
+            cpu_offload_gb=serving.cpu_offload_gb,
             seed=suite.seed,
         )
         initialization_seconds = time.perf_counter() - started
@@ -464,7 +479,7 @@ def main() -> int:
             for failure in worker["failures"]
         ]
         ranks = sorted(worker["tp_rank"] for worker in workers)
-        if ranks != list(range(_EXPECTED_WORLD_SIZE)):
+        if ranks != list(range(serving.tensor_parallel_size)):
             failures.append(f"unexpected TP ranks {ranks}")
         for worker in workers:
             if worker["compute_capability"] != [8, 0]:

@@ -26,9 +26,11 @@ SCIPY_WHEEL_SHA256="de3ade0e53bc1f21358aa74ff4830235d716211d7d077e340c7349bc3542
 SCIPY_WHEEL_OBJECT="inkling-small-ampere/runtime-dependencies/scipy/${SCIPY_VERSION}/${SCIPY_WHEEL_FILENAME}"
 RUN_TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 DISPLAY_NAME="inkling-w8a16-${MODE}-${RUN_TIMESTAMP}"
+PROJECT_COMMIT="$(git rev-parse HEAD)"
 TEMP_DIR="$(mktemp -d)"
 CONFIG_PATH="${TEMP_DIR}/vertex-w8a16-conversion.yaml"
 SOURCE_BUNDLE_PATH="${TEMP_DIR}/w8a16-conversion-sources.tgz"
+RUN_MANIFEST_PATH="${TEMP_DIR}/run-manifest.json"
 LOCAL_PLAN_DIR="${TEMP_DIR}/plan"
 DOWNLOADER_SOURCE="scripts/gpu/download_gcs_object.py"
 DOWNLOADER_BASE64="$(base64 <"${DOWNLOADER_SOURCE}" | tr -d '\n')"
@@ -38,12 +40,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+  echo "Refusing to bundle an uncommitted working tree." >&2
+  exit 2
+fi
+
 case "${MODE}" in
   smoke)
     TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-14400}"
     ;;
-  full | load)
+  full)
     TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-43200}"
+    ;;
+  load)
+    TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-3600}"
     ;;
   *)
     echo "MODE must be smoke, full, or load, not ${MODE}" >&2
@@ -114,11 +124,90 @@ COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "${SOURCE_BUNDLE_PATH}
   patches \
   results/reports/tensor_inventory.csv
 SOURCE_BUNDLE_SHA256="$(sha256 "${SOURCE_BUNDLE_PATH}")"
+TENSOR_INVENTORY_SHA256="$(sha256 results/reports/tensor_inventory.csv)"
 FLEX_PATCH_SHA256="$(sha256 patches/vllm/0001-inkling-sm80-flex-relative-attention.patch)"
 MOE_LOADER_PATCH_SHA256="$(sha256 patches/vllm/0002-inkling-fused-wna16-loader.patch)"
 MARLIN_SCALE_PATCH_SHA256="$(
   sha256 patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch
 )"
+SMOKE_SUITE_SHA256="$(sha256 configs/evaluation/gate-d-text-smoke-v1.json)"
+SERVING_CONFIG_SHA256="$(sha256 configs/serving/proof-of-life.json)"
+SOURCE_MODEL="$(jq -r '.repository' manifests/source-checkpoint.json)"
+SOURCE_REVISION="$(jq -r '.revision' manifests/source-checkpoint.json)"
+RUN_MANIFEST_CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PRIOR_TARGET_REPORT_URI=""
+if [[ -n "${PRIOR_TARGET_REPORT_OBJECT}" ]]; then
+  PRIOR_TARGET_REPORT_URI="${BUCKET}/${PRIOR_TARGET_REPORT_OBJECT}"
+fi
+
+jq -n \
+  --arg created_at "${RUN_MANIFEST_CREATED_AT}" \
+  --arg display_name "${DISPLAY_NAME}" \
+  --arg project_commit "${PROJECT_COMMIT}" \
+  --arg source_model "${SOURCE_MODEL}" \
+  --arg source_revision "${SOURCE_REVISION}" \
+  --arg vllm_image "${VLLM_IMAGE}" \
+  --arg vllm_revision "${VLLM_REVISION}" \
+  --arg mode "${MODE}" \
+  --arg plan_id "${PLAN_ID}" \
+  --arg output_prefix "${BUCKET}/${OUTPUT_PREFIX}" \
+  --arg run_prefix "${BUCKET}/${RUN_PREFIX}" \
+  --arg source_bundle_object "${BUCKET}/${SOURCE_BUNDLE_OBJECT}" \
+  --arg source_bundle_sha256 "${SOURCE_BUNDLE_SHA256}" \
+  --arg tensor_inventory_sha256 "${TENSOR_INVENTORY_SHA256}" \
+  --arg smoke_suite_sha256 "${SMOKE_SUITE_SHA256}" \
+  --arg serving_config_sha256 "${SERVING_CONFIG_SHA256}" \
+  --arg structural_report_sha256 "${PRIOR_STRUCTURAL_REPORT_SHA256}" \
+  --arg conversion_manifest_sha256 "${PRIOR_CONVERSION_MANIFEST_SHA256}" \
+  --arg conversion_plan_sha256 "${PRIOR_CONVERSION_PLAN_SHA256}" \
+  --arg target_report_sha256 "${PRIOR_TARGET_REPORT_SHA256}" \
+  --arg target_report_uri "${PRIOR_TARGET_REPORT_URI}" \
+  --argjson timeout_seconds "${TIMEOUT_SECONDS}" \
+  --argjson accelerator_count "${ACCELERATOR_COUNT}" \
+  '{
+    schema_version: "1.0.0",
+    kind: "inkling-w8a16-vertex-run",
+    created_at: $created_at,
+    display_name: $display_name,
+    project_commit: $project_commit,
+    source_model: $source_model,
+    source_revision: $source_revision,
+    runtime: {
+      name: "vllm",
+      image: $vllm_image,
+      revision: $vllm_revision
+    },
+    mode: $mode,
+    plan_id: $plan_id,
+    hardware: {
+      machine_type: "a2-ultragpu-4g",
+      accelerator_type: "NVIDIA_A100_80GB",
+      accelerator_count: $accelerator_count
+    },
+    scheduling: {
+      timeout_seconds: $timeout_seconds,
+      disable_retries: true,
+      restart_job_on_worker_restart: false
+    },
+    source_bundle: {
+      uri: $source_bundle_object,
+      sha256: $source_bundle_sha256
+    },
+    inputs: {
+      tensor_inventory_sha256: $tensor_inventory_sha256,
+      smoke_suite_sha256: $smoke_suite_sha256,
+      serving_config_sha256: $serving_config_sha256,
+      structural_report_sha256: $structural_report_sha256,
+      conversion_manifest_sha256: $conversion_manifest_sha256,
+      conversion_plan_sha256: $conversion_plan_sha256,
+      target_report_sha256: $target_report_sha256,
+      target_report_uri: (if $target_report_uri == "" then null else $target_report_uri end)
+    },
+    output_prefix: $output_prefix,
+    run_prefix: $run_prefix
+  }' >"${RUN_MANIFEST_PATH}"
+RUN_MANIFEST_SHA256="$(sha256 "${RUN_MANIFEST_PATH}")"
+cp "${RUN_MANIFEST_PATH}" "${LOCAL_PREFIX}-run-manifest.json"
 
 if [[ -z "${DRY_RUN_CONFIG}" ]]; then
   gcloud storage buckets describe "${BUCKET}" \
@@ -126,6 +215,9 @@ if [[ -z "${DRY_RUN_CONFIG}" ]]; then
     --format='value(name)' >/dev/null
   gcloud storage cp "${SOURCE_BUNDLE_PATH}" \
     "${BUCKET}/${SOURCE_BUNDLE_OBJECT}" \
+    --project="${PROJECT_ID}"
+  gcloud storage cp "${RUN_MANIFEST_PATH}" \
+    "${BUCKET}/${RUN_PREFIX}/run-manifest.json" \
     --project="${PROJECT_ID}"
 fi
 
@@ -171,6 +263,7 @@ workerPoolSpecs:
       export TOKENIZERS_PARALLELISM=false
       export CUDA_DEVICE_ORDER=PCI_BUS_ID
       ATTEMPT_ID="\$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+      export ATTEMPT_ID
       ATTEMPT_PREFIX="\${RUN_PREFIX}/attempts/\${ATTEMPT_ID}"
       echo "Attempt: \${ATTEMPT_ID}"
 
@@ -234,6 +327,23 @@ workerPoolSpecs:
         upload_file \
           "\${RUNTIME_DEPENDENCY_REPORT}" \
           "\${RUN_PREFIX}/runtime-dependency-preflight.json" \
+          application/json
+
+        HARNESS_PREFLIGHT_REPORT="\${WORK_ROOT}/gate-d-harness-preflight.json"
+        if ! python3 scripts/gpu/validate_gate_d_harness.py \
+          --probe scripts/gpu/full_checkpoint_load_probe.py \
+          --smoke-suite configs/evaluation/gate-d-text-smoke-v1.json \
+          --serving-config configs/serving/proof-of-life.json \
+          --output "\${HARNESS_PREFLIGHT_REPORT}"; then
+          upload_file \
+            "\${HARNESS_PREFLIGHT_REPORT}" \
+            "\${RUN_PREFIX}/gate-d-harness-preflight.json" \
+            application/json || true
+          exit 24
+        fi
+        upload_file \
+          "\${HARNESS_PREFLIGHT_REPORT}" \
+          "\${RUN_PREFIX}/gate-d-harness-preflight.json" \
           application/json
       fi
 
@@ -457,10 +567,16 @@ workerPoolSpecs:
         LOAD_REPORT="\${OUTPUT_CHECKPOINT}/gate-d-proof-of-life.json"
         if ! python3 scripts/gpu/full_checkpoint_load_probe.py \
           --model-dir "\${OUTPUT_CHECKPOINT}" \
+          --smoke-suite configs/evaluation/gate-d-text-smoke-v1.json \
+          --serving-config configs/serving/proof-of-life.json \
           --output "\${LOAD_REPORT}"; then
           upload_file \
             "\${LOAD_REPORT}" \
             "\${ATTEMPT_PREFIX}/gate-d-proof-of-life.json" \
+            application/json || true
+          upload_file \
+            "\${LOAD_REPORT}" \
+            "\${RUN_PREFIX}/gate-d-proof-of-life.json" \
             application/json || true
           upload_worker_logs
           exit 31
@@ -490,6 +606,10 @@ workerPoolSpecs:
       value: ${OUTPUT_PREFIX}
     - name: RUN_PREFIX
       value: ${RUN_PREFIX}
+    - name: PROJECT_COMMIT
+      value: ${PROJECT_COMMIT}
+    - name: RUN_MANIFEST_SHA256
+      value: ${RUN_MANIFEST_SHA256}
     - name: DOWNLOAD_WORKERS
       value: "${DOWNLOAD_WORKERS}"
     - name: CHUNK_MIB
@@ -527,6 +647,7 @@ workerPoolSpecs:
 scheduling:
   timeout: ${TIMEOUT_SECONDS}s
   disableRetries: true
+  restartJobOnWorkerRestart: false
 baseOutputDirectory:
   outputUriPrefix: ${BUCKET}/vertex-outputs
 YAML
@@ -601,6 +722,9 @@ if [[ "${MODE}" == "full" || "${MODE}" == "load" ]]; then
   download_artifact \
     "${RUN_PREFIX}/runtime-dependency-preflight.json" \
     "${LOCAL_PREFIX}-runtime-dependency-preflight.json"
+  download_artifact \
+    "${RUN_PREFIX}/gate-d-harness-preflight.json" \
+    "${LOCAL_PREFIX}-gate-d-harness-preflight.json"
   download_artifact \
     "${RUN_PREFIX}/quantization-target-preflight.json" \
     "${LOCAL_PREFIX}-quantization-target-preflight.json"
