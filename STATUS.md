@@ -1,6 +1,6 @@
 # Project status
 
-Last verified: 2026-08-02 00:34 EDT (2026-08-02 04:34 UTC)
+Last verified: 2026-08-02 00:36 EDT (2026-08-02 04:36 UTC)
 
 ## Executive state
 
@@ -45,14 +45,33 @@ before `INKLING_MODEL_PATH` is fixed.
 
 The user has submitted a request to raise serving quota from zero to four. The
 request is pending until an effective-quota readback proves approval. The user
-has separately authorized exactly one no-retry training CustomJob for the
-staged context ladder; at this status timestamp it has not yet been submitted.
+separately authorized exactly one no-retry training CustomJob for the staged
+context ladder.
 
-There is **no active Inkling Vertex job**. Gate E reconnaissance and local
-implementation created no image, Vertex Model, Endpoint, deployment, job,
-retry, or follow-on run.
+That job is now active in `JOB_STATE_PENDING`. No Vertex Model, Endpoint, or
+deployment exists, and no retry or follow-on job was submitted.
 
-## Final authorized job
+## Active authorized context job
+
+- Vertex job: `3774165205274066944`
+- Display name: `inkling-long-context-20260802-043523`
+- Created: `2026-08-02T04:35:28.100279Z`
+- GCP `startTime` field: `2026-08-02T04:35:28.380544Z`
+- Last observed state: `JOB_STATE_PENDING`
+- Hardware request: one `a2-ultragpu-4g` with four
+  `NVIDIA_A100_80GB` devices.
+- Scheduling: retries disabled, worker restart disabled, one model load,
+  stop on first failed stage, `10800s` hard execution ceiling, and `600s`
+  reserved for shutdown and artifact upload.
+- Source commit: `de233d3c8b148a5b6310c3329dd9a68c089e3090`
+- Source bundle SHA-256:
+  `c8b43912e9bd72857b6178fe23277648aac2b38664718c6994b243ecd8672736`
+- Run manifest SHA-256:
+  `1b7acd24638a6b8c60e7ac02d956f299cc1fd6cbdc30e42ca4a5ba88c3f4eb68`
+- Artifact prefix:
+  `gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/context-validation/inkling-long-context-20260802-043523`
+
+## Gate D final job
 
 - Vertex job: `2700175441402003456`
 - Display name: `inkling-w8a16-load-20260801-033052`
@@ -260,7 +279,7 @@ All failed and cancelled runs remain part of the evidence record.
 | Independent cloud-provisioning reproducibility | Not required; not demonstrated |
 | Responses-only serving profiles, launcher, image, and validator | Locally complete |
 | Consumer-facing warm endpoint | Blocked: serving quota 0/4 and storage-path preflight |
-| Training-quota staged context ladder | Authorized; locally validated; not yet submitted |
+| Training-quota staged context ladder | Active: `JOB_STATE_PENDING` |
 | 64K context | Memory projected; live execution not yet started |
 | 256K context | Memory projected; live execution not yet started |
 | Comparative task-quality evaluation | Not started |
@@ -297,9 +316,8 @@ The Gate E and long-context local suite passed at `2026-08-02T00:34:02-04:00`:
 
 ## Current cloud state
 
-The final Gate D job is terminal and all evidence remains preserved. There is
-no active Inkling job, no deployed Vertex model or endpoint, and no Gate E
-cloud cost at this timestamp. The serving-quota increase request and the
-separately authorized bounded training job do not change that statement until
-GCP reports new state. Local preparation did not consume banked usage or assume
-a billing reset.
+The final Gate D job is terminal and all evidence remains preserved. The single
+authorized long-context job is pending; no duplicate job exists. There is no
+deployed Vertex model or endpoint. The serving-quota increase request remains
+unverified until effective quota changes. This work does not assume banked
+usage or a billing reset.
