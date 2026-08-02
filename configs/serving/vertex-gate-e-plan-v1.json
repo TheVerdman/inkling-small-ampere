@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "inkling-vertex-responses-deployment-plan",
+  "plan_id": "vertex-gate-e-responses-v1",
+  "status": "blocked-before-deployment",
+  "cloud": {
+    "project_id": "project-49b1b523-d248-434f-bd4",
+    "project_number": "232930557062",
+    "region": "us-central1",
+    "dedicated_endpoint": true,
+    "min_replica_count": 1,
+    "max_replica_count": 1,
+    "machine_type": "a2-ultragpu-4g",
+    "accelerator_type": "NVIDIA_A100_80GB",
+    "accelerator_count": 4
+  },
+  "quota": {
+    "quota_id": "CustomModelServingA10080GBGPUsPerProjectPerRegion",
+    "metric": "aiplatform.googleapis.com/custom_model_serving_nvidia_a100_80gb_gpus",
+    "observed_effective_limit": 0,
+    "required_effective_limit": 4,
+    "eligible_for_increase": true,
+    "training_quota_is_not_serving_quota": true
+  },
+  "container": {
+    "dockerfile": "Dockerfile.serving",
+    "port": 8080,
+    "health_route": "/health",
+    "invoke_route_prefix": "/*",
+    "shared_memory_size_mb": 32768,
+    "deployment_timeout_seconds": 7200,
+    "startup_profile": "configs/serving/responses-2k-bringup-v1.json",
+    "target_profile": "configs/serving/responses-256k-candidate-v1.json"
+  },
+  "checkpoint": {
+    "artifact_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/conversions/conversion-e747e8121d5cd12c54c9",
+    "conversion_manifest_sha256": "210b62035668a17ba89ed08dc9eb224db2d6be48424a89cf655e341c23f38e71",
+    "tensor_payload_bytes": 271560750596,
+    "container_model_path_env": "INKLING_MODEL_PATH",
+    "local_restore_path": null,
+    "local_restore_path_status": "must-be-verified-on-a2-ultragpu-4g-before-model-upload"
+  },
+  "external_api": {
+    "contract": "openai-responses-only",
+    "stable_authenticated_edge_required": true,
+    "reason": "Vertex Invoke is a Google POST RPC rather than a raw OpenAI GET/POST base URL.",
+    "routes": [
+      "GET /v1/models",
+      "GET /v1/padawan/capabilities",
+      "POST /v1/responses"
+    ],
+    "streaming_terminal_event": "response.completed",
+    "chat_completions_contract": false
+  },
+  "mutation_state": {
+    "container_built": false,
+    "model_uploaded": false,
+    "endpoint_created": false,
+    "model_deployed": false
+  }
+}

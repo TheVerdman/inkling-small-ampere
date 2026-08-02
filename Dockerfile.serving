@@ -1,0 +1,33 @@
+# Gate E serving image. Keep this digest synchronized with Dockerfile and the
+# reviewed serving profiles.
+ARG VLLM_IMAGE="vllm/vllm-openai:v0.26.0-x86_64-cu129-ubuntu2404@sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8"
+FROM ${VLLM_IMAGE}
+
+LABEL org.opencontainers.image.title="Inkling-Small Ampere Responses server"
+LABEL org.opencontainers.image.description="Pinned TP4 W8A16 OpenAI Responses service"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /opt/inkling/app
+
+COPY pyproject.toml README.md LICENSE NOTICE ./
+COPY src ./src
+RUN python -m pip install --no-deps .
+
+COPY patches ./patches
+COPY scripts/__init__.py scripts/apply_unified_diff.py scripts/apply_runtime_patchset.py ./scripts/
+COPY configs/serving ./configs/serving
+
+RUN python -m scripts.apply_runtime_patchset \
+    --project-root /opt/inkling/app \
+    --marker /opt/inkling/runtime-patchset.json
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    INKLING_SERVING_PROFILE=/opt/inkling/app/configs/serving/responses-2k-bringup-v1.json
+
+EXPOSE 8080
+
+# The model is deliberately not baked into the image. INKLING_MODEL_PATH must
+# name a checksum-verified local restore before the process starts.
+ENTRYPOINT ["python", "-m", "inkling_ampere.serving.launch"]
+CMD ["--profile", "/opt/inkling/app/configs/serving/responses-2k-bringup-v1.json"]

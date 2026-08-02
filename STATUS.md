@@ -1,6 +1,6 @@
 # Project status
 
-Last verified: 2026-08-01 01:56 EDT (2026-08-01 05:56 UTC)
+Last verified: 2026-08-02 00:34 EDT (2026-08-02 04:34 UTC)
 
 ## Executive state
 
@@ -23,9 +23,34 @@ reconciliation retains exact matching for the deterministic one-token and
 fixed-smoke outputs, treats valid long-form variation as a diagnostic, and
 passes every required reproducibility check.
 
-There is **no active Inkling Vertex job**, and no additional run is authorized
-or needed for Gate D. Nightly decision: preserve the evidence, commit the
-recoverable state, and stop.
+**Gate E's local Responses-only serving contract is implemented and locally
+validated.** The repo now has a pinned serving image, fail-closed checkpoint
+and patch verification, staged 2K/64K/256K profiles, a PADAWAN capability
+route, and a wire-level Responses validator. This does not claim a live HTTP
+endpoint or a context-window pass beyond 2K.
+
+The bounded training-quota context harness is also locally complete. It uses
+one checkpoint restore and one server load, validates the Responses contract,
+then tests 2K, 8K, 32K, 64K, 128K, and 240K input tokens with streaming
+early/middle/late retrieval, exact usage and latency records, and device-wide
+HBM telemetry. It has no automatic retry, stops on the first failed stage, and
+has a three-hour execution ceiling with a ten-minute evidence-upload reserve.
+
+Cloud deployment is blocked before resource creation. Read-only reconnaissance
+found no Vertex Model or Endpoint resource and an effective custom-model A100
+80GB **serving** quota of zero in `us-central1`; one warm TP4 replica requires
+four. The separate training quota of four does not satisfy serving. The exact
+253 GiB checkpoint restore path onto A2 Ultra local SSD must also be verified
+before `INKLING_MODEL_PATH` is fixed.
+
+The user has submitted a request to raise serving quota from zero to four. The
+request is pending until an effective-quota readback proves approval. The user
+has separately authorized exactly one no-retry training CustomJob for the
+staged context ladder; at this status timestamp it has not yet been submitted.
+
+There is **no active Inkling Vertex job**. Gate E reconnaissance and local
+implementation created no image, Vertex Model, Endpoint, deployment, job,
+retry, or follow-on run.
 
 ## Final authorized job
 
@@ -233,13 +258,21 @@ All failed and cancelled runs remain part of the evidence record.
 | Clean automated Gate D process artifact | Pass |
 | Fresh-process inference reproducibility on one worker | Pass |
 | Independent cloud-provisioning reproducibility | Not required; not demonstrated |
+| Responses-only serving profiles, launcher, image, and validator | Locally complete |
+| Consumer-facing warm endpoint | Blocked: serving quota 0/4 and storage-path preflight |
+| Training-quota staged context ladder | Authorized; locally validated; not yet submitted |
+| 64K context | Memory projected; live execution not yet started |
+| 256K context | Memory projected; live execution not yet started |
 | Comparative task-quality evaluation | Not started |
 | Production performance and broader serving validation | Not started |
 
 ## Remaining work and limitations
 
-Gate D has no remaining blocker. Any next session should begin a new phase and
-must receive fresh authorization before submitting cloud work.
+Gate D has no remaining blocker. Gate E can proceed locally, but its first
+cloud deployment requires the A100 80GB custom-model serving quota to be raised
+from 0 to 4 and the A2 custom-container local-SSD path to be proven safe for the
+253 GiB restore. The stable edge must preserve raw Responses GET/POST/SSE while
+handling Vertex Invoke authentication and transport.
 
 Still untested: comparative quality, router stability, reasoning controls,
 tools, image, audio, long context, batching, prefix caching, CUDA graphs, MTP,
@@ -248,18 +281,25 @@ patches remain local and are not upstream.
 
 ## Local validation
 
-The final nightly suite passed at `2026-08-01T01:56:56-04:00`:
+The Gate E and long-context local suite passed at `2026-08-02T00:34:02-04:00`:
 
-- Ruff formatting: 62 files already formatted.
+- Ruff formatting: 78 files already formatted.
 - Ruff lint: all checks passed.
-- Strict mypy: no issues in 33 source files.
-- Pytest: 44 passed.
+- Strict mypy: no issues in 46 source files.
+- Pytest: 69 passed.
 - Bash syntax: every repository shell script passed.
-- Every repository JSON document, including ignored raw evidence, parsed
-  successfully.
+- All 117 repository JSON documents, including ignored raw evidence, parsed.
+- All three serving profiles produced valid dry-run launch documents.
+- All three runtime patch hashes matched their pinned values.
+- The Vertex long-context job rendered valid YAML with a 10,800-second timeout,
+  retries disabled, worker restart disabled, one four-A100 worker, and all six
+  monotonic stages.
 
-## Nightly stop state
+## Current cloud state
 
-Stop. The authorized job is terminal, no active Inkling job remains, all
-artifacts are preserved, and no retry or follow-on run is authorized. Do not
-assume banked usage or a billing reset is available.
+The final Gate D job is terminal and all evidence remains preserved. There is
+no active Inkling job, no deployed Vertex model or endpoint, and no Gate E
+cloud cost at this timestamp. The serving-quota increase request and the
+separately authorized bounded training job do not change that statement until
+GCP reports new state. Local preparation did not consume banked usage or assume
+a billing reset.

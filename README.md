@@ -11,6 +11,13 @@ four A100 80GB GPUs with the intended Marlin kernels, produced finite coherent
 32-token completions, and independently matched all ten fixed smoke prompts.
 See [STATUS.md](STATUS.md) for the exact evidence and scope.
 
+Gate E preparation now provides a fail-closed, **Responses-only** serving
+contract with 2K bring-up, 64K fallback, and 256K target profiles. The cloud
+endpoint has not been created: the project currently has zero custom-model
+A100 80GB serving quota, and the 253 GiB checkpoint's A2 local-SSD restore path
+must be verified first. See the [Gate E operationalization
+plan](docs/gate-e-operationalization.md).
+
 - Exact source: `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`
 - Exact source payload: 265,956,439,090 elements and 495.382 GiB of tensor data
 - Preferred projection: 64.887 GiB of tensors/rank
@@ -61,6 +68,38 @@ Collect a local environment report:
 make doctor
 ```
 
+Inspect the exact 256K candidate launch without loading vLLM or touching a
+GPU:
+
+```bash
+INKLING_MODEL_PATH=/path/to/restored/checkpoint \
+  scripts/launch_vllm.sh \
+  configs/serving/responses-256k-candidate-v1.json \
+  --dry-run
+```
+
+Once a live endpoint exists, its minimum PADAWAN-facing acceptance suite is:
+
+```bash
+INKLING_BASE_URL=https://your-stable-edge.example \
+INKLING_API_KEY=... \
+  python scripts/validate_responses_endpoint.py \
+  --output results/raw/gate-e-responses-endpoint.json
+```
+
+While serving quota is pending, the reviewed paid context-window probe uses
+the existing training quota. It restores the checkpoint once, launches one
+256K-configured Responses server, and stops on the first failed stage:
+
+```bash
+bash scripts/gcp/submit_vertex_long_context.sh
+```
+
+This submits exactly one no-retry `a2-ultragpu-4g` CustomJob. Its three-hour
+execution timeout is a hard upper bound, not an expected duration; ten minutes
+are reserved for server shutdown and artifact upload. The staged targets are
+2K, 8K, 32K, 64K, 128K, and 240K input tokens.
+
 On the authorized GCP project, the bounded four-A100 runtime reconnaissance is:
 
 ```bash
@@ -90,6 +129,7 @@ Key durable outputs:
 - [Exact memory and sharding model](docs/memory-model.md)
 - [Thirteen-point runtime trace](docs/runtime-compatibility.md)
 - [Gate B representative-execution decision](docs/gate-b-decision.md)
+- [Gate E Responses operationalization](docs/gate-e-operationalization.md)
 - `manifests/gate-d-reproducibility-20260801.json`
 - [Confirmed SM80 attention blocker](results/reports/ampere-attention-blocker.md)
 - [Ampere relative-attention repair design](docs/ampere-attention-design.md)
@@ -123,7 +163,10 @@ classes, expected Marlin kernels, four-rank TP/EP layouts, NCCL, and complete
 tiny-model generation. Gate C now passes for the full converted checkpoint,
 and the real checkpoint has loaded and generated with measured HBM on four
 A100s. Gate D passes in two fresh processes on one provisioned worker;
-publication still requires task-quality and performance evaluation.
+publication still requires task-quality and performance evaluation. Gate E is
+the warm endpoint phase: its local Responses contract and bounded
+training-quota context harness are implemented, but no cloud serving resource
+or context length beyond 2K has passed yet.
 
 ## Reproducibility baseline
 

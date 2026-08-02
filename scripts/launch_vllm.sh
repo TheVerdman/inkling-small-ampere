@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${INKLING_MODEL_PATH:?Set INKLING_MODEL_PATH to a validated local checkpoint path.}"
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+default_profile="${repository_root}/configs/serving/responses-2k-bringup-v1.json"
+profile="${INKLING_SERVING_PROFILE:-${default_profile}}"
 
-tensor_parallel_size="${TENSOR_PARALLEL_SIZE:-4}"
-max_model_len="${MAX_MODEL_LEN:-4096}"
-gpu_memory_utilization="${GPU_MEMORY_UTILIZATION:-0.90}"
+if [[ $# -gt 0 && "${1}" != -* ]]; then
+  profile="${1}"
+  shift
+fi
 
-exec vllm serve "${INKLING_MODEL_PATH}" \
-  --tensor-parallel-size "${tensor_parallel_size}" \
-  --max-model-len "${max_model_len}" \
-  --gpu-memory-utilization "${gpu_memory_utilization}" \
-  --enforce-eager
-
+export PYTHONPATH="${repository_root}/src${PYTHONPATH:+:${PYTHONPATH}}"
+exec python3 -m inkling_ampere.serving.launch --profile "${profile}" "$@"

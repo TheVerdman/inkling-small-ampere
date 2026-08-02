@@ -1,8 +1,34 @@
 # Script entry points
 
-`doctor.py`, checkpoint inspection, memory modeling, and sharding simulation are
-current entry points. Conversion, full-checkpoint validation, metrics, and
-report generation remain gate-aware stubs.
+`doctor.py`, checkpoint inspection, memory modeling, sharding simulation,
+conversion, Gate D reproduction, and Gate E serving validation are current
+entry points.
+
+`launch_vllm.sh` loads one strict Responses serving profile and delegates to
+the fail-closed Python launcher. An actual launch verifies the local checkpoint
+identity, pinned vLLM version, and runtime patch marker before executing vLLM.
+A `--dry-run` prints the exact redacted command and capability document without
+importing vLLM or touching a GPU.
+
+`apply_runtime_patchset.py` verifies and applies the three numbered vLLM
+patches during `Dockerfile.serving` builds, then records their hashes in the
+startup marker. `validate_responses_endpoint.py` checks model discovery,
+capability negotiation, strict structured output, token usage, SSE parsing,
+and the terminal `response.completed` object through the consumer-facing edge.
+
+`gpu/long_context_responses_probe.py` starts exactly one local patched server,
+runs the basic Responses acceptance suite, and then executes early/middle/late
+needle retrieval at 2K, 8K, 32K, 64K, 128K, and 240K input tokens. Every stage
+uses streaming strict JSON Schema without embedding the expected marker values
+in the schema. It records actual usage, time to first visible output, total
+latency, exact retrieval, and two-second per-GPU HBM samples, then stops on the
+first failure.
+
+`gcp/submit_vertex_long_context.sh` packages that harness into one no-retry
+training CustomJob on one `a2-ultragpu-4g`. The job restores the immutable
+checkpoint once and launches the model once. Its 10,800-second timeout is only
+a hard execution ceiling; the controller reserves the final 600 seconds for
+shutdown and evidence upload.
 
 `gcp/submit_vertex_recon.sh` submits one bounded four-A100 Vertex job using the
 exact pinned vLLM image. It captures hardware and NCCL facts and runs no-weight
