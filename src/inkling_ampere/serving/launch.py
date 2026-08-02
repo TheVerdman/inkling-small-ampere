@@ -15,6 +15,17 @@ from inkling_ampere.serving.profile import ServingProfile, load_serving_profile
 _DEFAULT_PATCHSET_MARKER = Path("/opt/inkling/runtime-patchset.json")
 
 
+def _matches_reviewed_vllm_version(installed: str, required: str) -> bool:
+    """Accept an image-local build suffix for the reviewed public release."""
+
+    if installed == required:
+        return True
+    if "+" in required:
+        return False
+    public, separator, local = installed.partition("+")
+    return public == required and separator == "+" and bool(local)
+
+
 def _model_path(value: str | None) -> Path:
     raw = value or os.environ.get("INKLING_MODEL_PATH")
     if not raw:
@@ -152,7 +163,7 @@ def verify_runtime(profile: ServingProfile, model_path: Path, marker_path: Path)
         )
 
     installed_vllm = importlib.metadata.version("vllm")
-    if installed_vllm != profile.runtime.vllm_version:
+    if not _matches_reviewed_vllm_version(installed_vllm, profile.runtime.vllm_version):
         raise RuntimeError(
             f"vLLM version mismatch: installed {installed_vllm}, "
             f"profile requires {profile.runtime.vllm_version}"
@@ -163,10 +174,10 @@ def verify_runtime(profile: ServingProfile, model_path: Path, marker_path: Path)
         raise RuntimeError(f"cannot read runtime patch marker {marker_path}: {exc}") from exc
     if not isinstance(marker, dict):
         raise RuntimeError(f"runtime patch marker must be an object: {marker_path}")
-    if marker.get("vllm_version") != profile.runtime.vllm_version:
+    if marker.get("vllm_version") != installed_vllm:
         raise RuntimeError(
             "runtime patch marker vLLM mismatch: "
-            f"expected {profile.runtime.vllm_version!r}, "
+            f"expected installed build {installed_vllm!r}, "
             f"observed {marker.get('vllm_version')!r}"
         )
     observed = {

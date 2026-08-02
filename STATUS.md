@@ -1,6 +1,6 @@
 # Project status
 
-Last verified: 2026-08-02 00:36 EDT (2026-08-02 04:36 UTC)
+Last verified: 2026-08-02 01:19 EDT (2026-08-02 05:19 UTC)
 
 ## Executive state
 
@@ -46,18 +46,32 @@ before `INKLING_MODEL_PATH` is fixed.
 The user has submitted a request to raise serving quota from zero to four. The
 request is pending until an effective-quota readback proves approval. The user
 separately authorized exactly one no-retry training CustomJob for the staged
-context ladder.
+context ladder. That job is now terminal `JOB_STATE_FAILED`. It restored all
+32 checkpoint shards, passed the dependency preflight, and applied all three
+reviewed runtime patches, then stopped before model load because the fail-closed
+launcher compared vLLM `0.26.0+cu129` to the reviewed public release `0.26.0`
+using exact string equality. No context stage ran, so this is a serving-harness
+defect and an **inconclusive context-window result**, not a checkpoint, kernel,
+memory-capacity, or context-length failure.
 
-That job is now active in `JOB_STATE_PENDING`. No Vertex Model, Endpoint, or
-deployment exists, and no retry or follow-on job was submitted.
+The local gate now accepts an image-local suffix only when its public release
+matches the profile pin, and separately requires the patch marker to match the
+exact installed build. The correction is locally tested. No Vertex Model,
+Endpoint, deployment, retry, or follow-on job was submitted.
 
-## Active authorized context job
+## Authorized context job result
 
 - Vertex job: `3774165205274066944`
 - Display name: `inkling-long-context-20260802-043523`
 - Created: `2026-08-02T04:35:28.100279Z`
-- GCP `startTime` field: `2026-08-02T04:35:28.380544Z`
-- Last observed state: `JOB_STATE_PENDING`
+- Runtime start: `2026-08-02T04:57:30Z`
+- End: `2026-08-02T05:11:37Z`
+- Terminal state: `JOB_STATE_FAILED`
+- Vertex error code: `3`; worker exit status: `1`.
+- Pending duration: approximately 22 minutes 2 seconds.
+- Runtime duration: approximately 14 minutes 7 seconds, dominated by the
+  253 GiB checkpoint restore; the context harness itself stopped after
+  5.079 seconds.
 - Hardware request: one `a2-ultragpu-4g` with four
   `NVIDIA_A100_80GB` devices.
 - Scheduling: retries disabled, worker restart disabled, one model load,
@@ -70,6 +84,26 @@ deployment exists, and no retry or follow-on job was submitted.
   `1b7acd24638a6b8c60e7ac02d956f299cc1fd6cbdc30e42ca4a5ba88c3f4eb68`
 - Artifact prefix:
   `gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/context-validation/inkling-long-context-20260802-043523`
+
+Verified terminal evidence:
+
+- All 32 checkpoint shards and all finalized assets restored with no missing
+  shard; the conversion manifest remained
+  `210b62035668a17ba89ed08dc9eb224db2d6be48424a89cf655e341c23f38e71`.
+- The NumPy `2.2.6` / SciPy `1.13.1` dependency preflight passed, including
+  its assignment smoke test.
+- All three pinned vLLM patches applied to the `0.26.0+cu129` image build.
+- The server never became ready, the model never loaded, and the report has
+  `stages: []`.
+- Twelve telemetry rows show at most 869.562 MiB used and 0% GPU utilization
+  on each device, corroborating that no model allocation began.
+- The exact failure was `vLLM version mismatch: installed 0.26.0+cu129,
+  profile requires 0.26.0`.
+
+Repository policy keeps raw run evidence outside Git. Downloaded copies remain
+under `results/raw/inkling-long-context-20260802-043523-*`; the tracked
+`manifests/long-context-validation-attempt-20260802.json` records exact hashes,
+sizes, provenance, result classification, and remaining blockers.
 
 ## Gate D final job
 
@@ -279,19 +313,22 @@ All failed and cancelled runs remain part of the evidence record.
 | Independent cloud-provisioning reproducibility | Not required; not demonstrated |
 | Responses-only serving profiles, launcher, image, and validator | Locally complete |
 | Consumer-facing warm endpoint | Blocked: serving quota 0/4 and storage-path preflight |
-| Training-quota staged context ladder | Active: `JOB_STATE_PENDING` |
-| 64K context | Memory projected; live execution not yet started |
-| 256K context | Memory projected; live execution not yet started |
+| Training-quota staged context ladder | Inconclusive: harness stopped before model load on a corrected version-string gate |
+| 64K context | Memory projected; live stage not executed |
+| 256K context | Memory projected; live stage not executed |
 | Comparative task-quality evaluation | Not started |
 | Production performance and broader serving validation | Not started |
 
 ## Remaining work and limitations
 
-Gate D has no remaining blocker. Gate E can proceed locally, but its first
-cloud deployment requires the A100 80GB custom-model serving quota to be raised
-from 0 to 4 and the A2 custom-container local-SSD path to be proven safe for the
-253 GiB restore. The stable edge must preserve raw Responses GET/POST/SSE while
-handling Vertex Invoke authentication and transport.
+Gate D has no remaining blocker. Gate E can proceed locally, but the staged
+context ladder remains unmeasured because the single authorized attempt stopped
+before model load. The blocking launcher defect is corrected locally; any cloud
+rerun requires separate explicit authorization. The first cloud deployment
+also requires the A100 80GB custom-model serving quota to be raised from 0 to 4
+and the A2 custom-container local-SSD path to be proven safe for the 253 GiB
+restore. The stable edge must preserve raw Responses GET/POST/SSE while handling
+Vertex Invoke authentication and transport.
 
 Still untested: comparative quality, router stability, reasoning controls,
 tools, image, audio, long context, batching, prefix caching, CUDA graphs, MTP,
@@ -300,14 +337,15 @@ patches remain local and are not upstream.
 
 ## Local validation
 
-The Gate E and long-context local suite passed at `2026-08-02T00:34:02-04:00`:
+The terminal-state correction and complete shutdown suite passed at
+`2026-08-02T01:19:21-04:00`:
 
 - Ruff formatting: 78 files already formatted.
 - Ruff lint: all checks passed.
 - Strict mypy: no issues in 46 source files.
-- Pytest: 69 passed.
-- Bash syntax: every repository shell script passed.
-- All 117 repository JSON documents, including ignored raw evidence, parsed.
+- Pytest: 75 passed, including the image-local vLLM version regression cases.
+- Bash syntax: all 13 repository shell scripts passed.
+- All 131 repository JSON documents, including ignored raw evidence, parsed.
 - All three serving profiles produced valid dry-run launch documents.
 - All three runtime patch hashes matched their pinned values.
 - The Vertex long-context job rendered valid YAML with a 10,800-second timeout,
@@ -316,8 +354,8 @@ The Gate E and long-context local suite passed at `2026-08-02T00:34:02-04:00`:
 
 ## Current cloud state
 
-The final Gate D job is terminal and all evidence remains preserved. The single
-authorized long-context job is pending; no duplicate job exists. There is no
-deployed Vertex model or endpoint. The serving-quota increase request remains
-unverified until effective quota changes. This work does not assume banked
-usage or a billing reset.
+The final Gate D job and the single authorized long-context job are terminal,
+and all evidence remains preserved. There is no active Inkling CustomJob, no
+duplicate job, and no deployed Vertex model or endpoint. The serving-quota
+increase request remains unverified until effective quota changes. This work
+does not assume banked usage or a billing reset.

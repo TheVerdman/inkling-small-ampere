@@ -1,0 +1,163 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "ampere-inkling-responses-long-context-validation-attempt",
+  "status": "failed-before-model-load",
+  "decision": "context-window-validation-inconclusive",
+  "decision_date": "2026-08-02",
+  "source_project": "project-49b1b523-d248-434f-bd4",
+  "source_region": "us-central1",
+  "checkpoint": {
+    "plan_id": "conversion-e747e8121d5cd12c54c9",
+    "prefix": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/conversions/conversion-e747e8121d5cd12c54c9",
+    "conversion_manifest_sha256": "210b62035668a17ba89ed08dc9eb224db2d6be48424a89cf655e341c23f38e71",
+    "restored_shards": 32,
+    "missing_shards": 0
+  },
+  "job": {
+    "source_job_id": "3774165205274066944",
+    "source_job_display_name": "inkling-long-context-20260802-043523",
+    "source_job_state": "JOB_STATE_FAILED",
+    "source_job_created_at": "2026-08-02T04:35:28.100279Z",
+    "source_job_started_at": "2026-08-02T04:57:30Z",
+    "source_job_ended_at": "2026-08-02T05:11:37Z",
+    "source_commit": "de233d3c8b148a5b6310c3329dd9a68c089e3090",
+    "source_bundle_sha256": "c8b43912e9bd72857b6178fe23277648aac2b38664718c6994b243ecd8672736",
+    "run_manifest_sha256": "1b7acd24638a6b8c60e7ac02d956f299cc1fd6cbdc30e42ca4a5ba88c3f4eb68",
+    "attempt_id": "04602ec3d59546d38799079acb6aa07a",
+    "accelerators": 4,
+    "accelerator_type": "NVIDIA_A100_80GB",
+    "machine_type": "a2-ultragpu-4g",
+    "execution_timeout_seconds": 10800,
+    "artifact_upload_reserve_seconds": 600,
+    "retries_disabled": true,
+    "worker_restart_disabled": true,
+    "worker_exit_status": 1,
+    "vertex_error_code": 3
+  },
+  "profile": {
+    "profile_id": "responses-256k-candidate-v1",
+    "profile_sha256": "86115440d0d9ad92911788283b1ca1f3872decc3f627c7f0afeecbdf72117c6f",
+    "suite_id": "gate-e-long-context-v1",
+    "suite_sha256": "93e0faedd39b1b0a01fe369078dfb93ed8973062a97bdf8aff2a162485e27c34",
+    "max_model_len": 262144,
+    "kv_cache_memory_bytes": 3221225472,
+    "planned_input_token_stages": [2048, 8192, 32768, 65536, 131072, 245760]
+  },
+  "verified_preflight": {
+    "checkpoint_restore_passed": true,
+    "restored_shards": 32,
+    "dependency_preflight_passed": true,
+    "numpy_version": "2.2.6",
+    "scipy_version": "1.13.1",
+    "runtime_patch_application_passed": true,
+    "installed_vllm_version": "0.26.0+cu129",
+    "runtime_patch_count": 3
+  },
+  "failure": {
+    "type": "ProbeError",
+    "message": "vLLM server exited during startup with code 1",
+    "root_cause": "The fail-closed launcher compared the installed image build string 0.26.0+cu129 to the reviewed public release 0.26.0 using exact string equality.",
+    "model_loaded": false,
+    "server_ready": false,
+    "completed_context_stages": 0,
+    "context_window_result": "not tested",
+    "harness_seconds": 5.07895797499998,
+    "classification": "serving-harness version-gate defect; no checkpoint, kernel, memory-capacity, or context-length conclusion"
+  },
+  "hbm_telemetry": {
+    "sample_rows": 12,
+    "backend": "nvml-ctypes",
+    "devices": 4,
+    "max_memory_used_mib_per_device": 869.562,
+    "max_gpu_utilization_percent": 0.0
+  },
+  "runtime_patches": [
+    {
+      "path": "patches/vllm/0001-inkling-sm80-flex-relative-attention.patch",
+      "sha256": "ebf3ecce3183796f07927a536ee0f05c4b9f1c9244c77a54dfbc51ef40444e96"
+    },
+    {
+      "path": "patches/vllm/0002-inkling-fused-wna16-loader.patch",
+      "sha256": "bfff68f0e15be7c072e213682aa5c1044f2179ea3d066fc50448d39b5e894516"
+    },
+    {
+      "path": "patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch",
+      "sha256": "3b051d4ed02a7eb6eda5c0f0b65cfb445b7e9ee8d8aa78ce4c40a62ad350d7c0"
+    }
+  ],
+  "artifact_prefix": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/context-validation/inkling-long-context-20260802-043523",
+  "artifacts": [
+    {
+      "component": "run_manifest",
+      "status": "verified",
+      "path": "results/raw/inkling-long-context-20260802-043523-run-manifest.json",
+      "bytes": 3515,
+      "sha256": "1b7acd24638a6b8c60e7ac02d956f299cc1fd6cbdc30e42ca4a5ba88c3f4eb68"
+    },
+    {
+      "component": "checkpoint_restore",
+      "status": "passed",
+      "path": "results/raw/inkling-long-context-20260802-043523-gcs-restore.json",
+      "bytes": 8491,
+      "sha256": "339f0d21aba169ad2ffac7d14f2064883b7cae7184495a4c9d780a9d85cf59ee"
+    },
+    {
+      "component": "runtime_dependency_preflight",
+      "status": "passed",
+      "path": "results/raw/inkling-long-context-20260802-043523-runtime-dependency-preflight.json",
+      "bytes": 420,
+      "sha256": "09687542ddb331cff7d6726b52fdb4a4967bb3b255a53fd535de70c9cb580435"
+    },
+    {
+      "component": "runtime_patchset",
+      "status": "passed",
+      "path": "results/raw/inkling-long-context-20260802-043523-runtime-patchset.json",
+      "bytes": 1717,
+      "sha256": "115b46b4abb841c6cec82502d6f4faf8c2b74c6ea44e51460b0572985629ec19"
+    },
+    {
+      "component": "runtime_patchset_application",
+      "status": "passed",
+      "path": "results/raw/inkling-long-context-20260802-043523-runtime-patchset-application.json",
+      "bytes": 1717,
+      "sha256": "115b46b4abb841c6cec82502d6f4faf8c2b74c6ea44e51460b0572985629ec19"
+    },
+    {
+      "component": "long_context_validation",
+      "status": "failed-before-model-load",
+      "path": "results/raw/inkling-long-context-20260802-043523-long-context-validation.json",
+      "bytes": 4685,
+      "sha256": "66522a04c5db6950010382731a811390572ac6f67c6e3e3658503bc8e43b3328"
+    },
+    {
+      "component": "vllm_server_log",
+      "status": "preserved",
+      "path": "results/raw/inkling-long-context-20260802-043523-vllm-server.log",
+      "bytes": 799,
+      "sha256": "e82f8bd80420fa0c4ad731a927675a22bceb1233004c7b116a39a06819414391"
+    },
+    {
+      "component": "hbm_telemetry",
+      "status": "preserved",
+      "path": "results/raw/inkling-long-context-20260802-043523-hbm-telemetry.csv",
+      "bytes": 1683,
+      "sha256": "fba047fe9820a8c37bb4943fa433f9261678c8324f0fddbcd4ec137350e7e597"
+    },
+    {
+      "component": "vertex_job",
+      "status": "preserved",
+      "path": "results/raw/inkling-long-context-20260802-043523-vertex-job.json",
+      "bytes": 12620,
+      "sha256": "7f5cd12205f6fb7354b105d3f621dfaded5b7c0694cbb2304ce2f4f1d834ddd4"
+    }
+  ],
+  "local_fix": {
+    "status": "implemented-and-locally-validated; no cloud retry submitted",
+    "behavior": "Accept an installed PEP 440 local-version suffix only when its public release equals the profile pin, then require the runtime patch marker to equal the exact installed build string."
+  },
+  "remaining_blockers": [
+    "The 2K-through-240K Responses context ladder remains unexecuted because this attempt stopped before model load.",
+    "A cloud rerun would require separate explicit authorization; none was submitted.",
+    "The warm endpoint still requires effective A100 80GB custom-model serving quota of four and a deployment storage-path preflight."
+  ]
+}
