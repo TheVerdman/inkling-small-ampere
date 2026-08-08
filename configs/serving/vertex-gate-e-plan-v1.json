@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "kind": "inkling-vertex-responses-deployment-plan",
   "plan_id": "vertex-gate-e-responses-v1",
-  "status": "blocked-before-deployment",
+  "status": "ready-for-deployment-preflight",
   "cloud": {
     "project_id": "project-49b1b523-d248-434f-bd4",
     "project_number": "232930557062",
@@ -17,8 +17,11 @@
   "quota": {
     "quota_id": "CustomModelServingA10080GBGPUsPerProjectPerRegion",
     "metric": "aiplatform.googleapis.com/custom_model_serving_nvidia_a100_80gb_gpus",
-    "observed_effective_limit": 0,
+    "observed_effective_limit": 4,
     "required_effective_limit": 4,
+    "effective_limit_verified_at": "2026-08-08T17:29:59Z",
+    "request_number": "73959678",
+    "quota_satisfied": true,
     "eligible_for_increase": true,
     "training_quota_is_not_serving_quota": true
   },

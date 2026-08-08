@@ -1,6 +1,6 @@
 # Project status
 
-Last verified: 2026-08-02 01:19 EDT (2026-08-02 05:19 UTC)
+Last verified: 2026-08-08 13:29 EDT (2026-08-08 17:29 UTC)
 
 ## Executive state
 
@@ -36,17 +36,16 @@ early/middle/late retrieval, exact usage and latency records, and device-wide
 HBM telemetry. It has no automatic retry, stops on the first failed stage, and
 has a three-hour execution ceiling with a ten-minute evidence-upload reserve.
 
-Cloud deployment is blocked before resource creation. Read-only reconnaissance
-found no Vertex Model or Endpoint resource and an effective custom-model A100
-80GB **serving** quota of zero in `us-central1`; one warm TP4 replica requires
-four. The separate training quota of four does not satisfy serving. The exact
-253 GiB checkpoint restore path onto A2 Ultra local SSD must also be verified
-before `INKLING_MODEL_PATH` is fixed.
+Serving-quota request `73959678` was approved for four custom-model-serving
+A100 80GB GPUs in `us-central1`. A Service Usage API readback on 2026-08-08
+verified an effective limit of `4`, exactly enough for one warm TP4 replica.
+Read-only inventory found no Vertex Model, Endpoint, or active CustomJob. The
+quota blocker is removed; the exact 253 GiB checkpoint restore path onto A2
+Ultra local SSD must still be verified before `INKLING_MODEL_PATH` is fixed,
+and no cost-incurring deployment is authorized merely by the quota approval.
 
-The user has submitted a request to raise serving quota from zero to four. The
-request is pending until an effective-quota readback proves approval. The user
-separately authorized exactly one no-retry training CustomJob for the staged
-context ladder. That job is now terminal `JOB_STATE_FAILED`. It restored all
+The user separately authorized exactly one no-retry training CustomJob for the
+staged context ladder. That job is now terminal `JOB_STATE_FAILED`. It restored all
 32 checkpoint shards, passed the dependency preflight, and applied all three
 reviewed runtime patches, then stopped before model load because the fail-closed
 launcher compared vLLM `0.26.0+cu129` to the reviewed public release `0.26.0`
@@ -312,7 +311,7 @@ All failed and cancelled runs remain part of the evidence record.
 | Fresh-process inference reproducibility on one worker | Pass |
 | Independent cloud-provisioning reproducibility | Not required; not demonstrated |
 | Responses-only serving profiles, launcher, image, and validator | Locally complete |
-| Consumer-facing warm endpoint | Blocked: serving quota 0/4 and storage-path preflight |
+| Consumer-facing warm endpoint | Quota ready at 4/4; blocked on storage-path preflight and explicit deployment approval |
 | Training-quota staged context ladder | Inconclusive: harness stopped before model load on a corrected version-string gate |
 | 64K context | Memory projected; live stage not executed |
 | 256K context | Memory projected; live stage not executed |
@@ -324,11 +323,12 @@ All failed and cancelled runs remain part of the evidence record.
 Gate D has no remaining blocker. Gate E can proceed locally, but the staged
 context ladder remains unmeasured because the single authorized attempt stopped
 before model load. The blocking launcher defect is corrected locally; any cloud
-rerun requires separate explicit authorization. The first cloud deployment
-also requires the A100 80GB custom-model serving quota to be raised from 0 to 4
-and the A2 custom-container local-SSD path to be proven safe for the 253 GiB
-restore. The stable edge must preserve raw Responses GET/POST/SSE while handling
-Vertex Invoke authentication and transport.
+rerun requires separate explicit authorization. The serving quota is now
+verified at 4/4. The first cloud deployment still requires the A2
+custom-container local-SSD path to be proven safe for the 253 GiB restore and
+explicit approval for the continuously billed warm replica. The stable edge
+must preserve raw Responses GET/POST/SSE while handling Vertex Invoke
+authentication and transport.
 
 Still untested: comparative quality, router stability, reasoning controls,
 tools, image, audio, long context, batching, prefix caching, CUDA graphs, MTP,
@@ -355,7 +355,8 @@ The terminal-state correction and complete shutdown suite passed at
 ## Current cloud state
 
 The final Gate D job and the single authorized long-context job are terminal,
-and all evidence remains preserved. There is no active Inkling CustomJob, no
-duplicate job, and no deployed Vertex model or endpoint. The serving-quota
-increase request remains unverified until effective quota changes. This work
-does not assume banked usage or a billing reset.
+and all evidence remains preserved. A 2026-08-08 read-only inventory found no
+active CustomJob and no Vertex Model or Endpoint in `us-central1`. The effective
+custom-model-serving A100 80GB quota is verified at 4/4. No deployment has been
+authorized or created, and this work does not assume banked usage or a billing
+reset.
