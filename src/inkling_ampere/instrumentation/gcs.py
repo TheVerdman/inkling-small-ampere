@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -24,6 +24,37 @@ _METADATA_TOKEN_URL = (
 
 class GCSError(RuntimeError):
     """Raised when a GCS object cannot be uploaded or verified."""
+
+
+def _download_sha256(
+    remote: Mapping[str, object],
+    *,
+    expected_sha256: str | None,
+) -> str:
+    """Select a trusted digest without depending on copied object metadata.
+
+    Vertex Model artifact import can copy objects into the managed bucket
+    exposed through ``AIP_STORAGE_URI``. Custom GCS metadata is not part of the
+    documented copy contract, so a caller-provided digest is sufficient when
+    it is pinned by the reviewed profile or its verified conversion manifest.
+    """
+
+    metadata = remote.get("metadata")
+    remote_sha256 = metadata.get("sha256") if isinstance(metadata, dict) else None
+    if remote_sha256 is not None and not isinstance(remote_sha256, str):
+        raise GCSError("GCS object metadata contains an invalid sha256")
+    if (
+        expected_sha256 is not None
+        and remote_sha256 is not None
+        and remote_sha256 != expected_sha256
+    ):
+        raise GCSError("remote SHA-256 metadata differs from expected content")
+    selected = expected_sha256 or remote_sha256
+    if selected is None:
+        raise GCSError("GCS object metadata omitted sha256 and no digest was pinned")
+    if len(selected) != 64 or any(character not in "0123456789abcdef" for character in selected):
+        raise GCSError("download SHA-256 must be a lowercase hexadecimal digest")
+    return selected
 
 
 def _atomic_write(path: Path, value: Mapping[str, object]) -> None:
@@ -363,23 +394,21 @@ class GCSResumableUploader:
         *,
         expected_size: int | None = None,
         expected_sha256: str | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> dict[str, object]:
         """Download one content-addressed object with bounded-memory resume."""
+        if cancelled is not None and cancelled():
+            raise GCSError("GCS download cancelled")
         remote = self.describe(object_name)
         if remote is None:
             raise GCSError(f"gs://{self.bucket}/{object_name} does not exist")
         raw_size = remote.get("size")
-        metadata = remote.get("metadata")
         if not isinstance(raw_size, str) or not raw_size.isdigit():
             raise GCSError("GCS object metadata omitted a valid size")
         size = int(raw_size)
-        remote_sha = metadata.get("sha256") if isinstance(metadata, dict) else None
-        if not isinstance(remote_sha, str):
-            raise GCSError("GCS object metadata omitted sha256")
+        remote_sha = _download_sha256(remote, expected_sha256=expected_sha256)
         if expected_size is not None and size != expected_size:
             raise GCSError(f"remote size {size} differs from expected {expected_size}")
-        if expected_sha256 is not None and remote_sha != expected_sha256:
-            raise GCSError("remote SHA-256 metadata differs from expected content")
         if path.exists():
             if path.stat().st_size == size and sha256_file(path) == remote_sha:
                 return remote
@@ -398,13 +427,17 @@ class GCSResumableUploader:
                     partial.unlink(missing_ok=True)
                 mode = "ab" if start else "wb"
                 with partial.open(mode) as handle:
-                    for payload in iter(
-                        lambda: response.read(self.chunk_bytes),
-                        b"",
-                    ):
+                    while True:
+                        if cancelled is not None and cancelled():
+                            raise GCSError("GCS download cancelled")
+                        payload = response.read(self.chunk_bytes)
+                        if not payload:
+                            break
                         handle.write(payload)
                     handle.flush()
                     os.fsync(handle.fileno())
+        if cancelled is not None and cancelled():
+            raise GCSError("GCS download cancelled")
         if partial.stat().st_size != size:
             raise GCSError(f"{partial}: downloaded {partial.stat().st_size} bytes, expected {size}")
         actual_sha = sha256_file(partial)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from inkling_ampere.quantization.converter import (
@@ -7,12 +8,17 @@ from inkling_ampere.quantization.converter import (
     runtime_quantization_targets,
 )
 
+_ROOT = Path(__file__).resolve().parents[2]
+_INVENTORY = _ROOT / "tests/fixtures/inkling-small-b2d4f225/tensor_inventory.csv"
+_INVENTORY_SHA256 = "7882601238779edb8ed80d39f1fbe6adc2cb6f2f2a4941633ac4186b3ccd0355"
 
-def test_balanced_full_plan_matches_exact_checkpoint_inventory(tmp_path: Path) -> None:
+
+def test_balanced_full_plan_matches_exact_checkpoint_inventory() -> None:
+    assert hashlib.sha256(_INVENTORY.read_bytes()).hexdigest() == _INVENTORY_SHA256
     plan = build_conversion_plan(
-        source_manifest_path=Path("manifests/source-checkpoint.json"),
-        inventory_path=Path("results/reports/tensor_inventory.csv"),
-        profile_path=Path("configs/quantization/w8a16-balanced-v1.json"),
+        source_manifest_path=_ROOT / "manifests/source-checkpoint.json",
+        inventory_path=_INVENTORY,
+        profile_path=_ROOT / "configs/quantization/w8a16-balanced-v1.json",
     )
 
     assert plan.plan_id == "conversion-e747e8121d5cd12c54c9"

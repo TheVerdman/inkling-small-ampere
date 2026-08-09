@@ -28,7 +28,11 @@ def test_serving_image_applies_patchset_and_defaults_to_safe_profile() -> None:
     )
 
     assert serving_base == research_base
-    assert "python -m scripts.apply_runtime_patchset" in dockerfile
+    assert 'ARG SCIPY_VERSION="1.13.1"' in dockerfile
+    assert "de3ade0e53bc1f21358aa74ff4830235d716211d7d077e340c7349bc3542e884" in dockerfile
+    assert "scipy.optimize import linear_sum_assignment" in dockerfile
+    assert "RUN /usr/bin/python3 -m pip install --no-deps ." in dockerfile
+    assert "/usr/bin/python3 -m scripts.apply_runtime_patchset" in dockerfile
     assert "responses-2k-bringup-v1.json" in dockerfile
-    assert 'ENTRYPOINT ["python", "-m", "inkling_ampere.serving.launch"]' in dockerfile
+    assert 'ENTRYPOINT ["/usr/bin/python3", "-m", "inkling_ampere.serving.bootstrap"]' in dockerfile
     assert "COPY results" not in dockerfile

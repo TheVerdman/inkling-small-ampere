@@ -1,6 +1,6 @@
 # Inkling-Small Vertex serving handoff
 
-Verified: 2026-08-08 13:29 EDT / 2026-08-08T17:29:59Z
+Verified: 2026-08-08 22:40 EDT / 2026-08-09T02:40:03Z
 
 ## Mission
 
@@ -14,14 +14,142 @@ This repository owns checkpoint/runtime/serving work. PADAWAN work is occurring
 in another task, and Magellan will be updated in its own repository. Do not edit
 either consumer repository unless the user explicitly expands this task.
 
+## Post-handoff execution update
+
+The user subsequently approved the exact image-publication identity and two
+bounded no-checkpoint storage-probe attempts. Publication completed under Docker-context
+SHA-256 `83a1ddd6b54a2add50d7ce1ef51b9573ac81e37e1b22e647a5ecd651d8259ea1`;
+the immutable serving and edge digests are recorded in `STATUS.md` and
+`manifests/gate-e-serving-operationalization-20260808.json`.
+
+The first probe ended `FAILED_TO_DEPLOY` after `2003.69981` seconds with
+no deployed-model ID, container log, Invoke response, or mount evidence. Vertex
+rejected cancellation at the approved 900-second boundary because DeployModel
+was not cancellable. The Endpoint is retained empty, the probe Model was
+deleted, no checkpoint was attached or downloaded, and no retry ran. This is
+an inconclusive diagnostic result.
+
+The evidence-preserving probe was then published once as
+`inkling-storage-probe@sha256:d49db8b23a387d649963af27c92e76dcd47b7a048fdfd11df12214dbef9c8d70`
+from approved context
+`cd77188ae96fe14cbb72ddffc412f440601966822d9a6a546d48ffc50ae1c60b`.
+The authorized v2 deployment reached terminal success and one available
+`a2-ultragpu-4g` replica in `1220.519496` seconds. It exposed deployed-model ID
+`3624567018998464512` and dedicated DNS
+`https://inkling-small-responses-gate-e.us-central1-232930557062.prediction.vertexai.goog`.
+
+V2 is still inconclusive because its evidence request used the shared regional
+hostname, which Vertex rejects for a dedicated Endpoint with HTTP 400. The
+actual name-based dedicated DNS appeared only at terminal deployment; no
+post-ready call reached the container within the declared observation phase.
+The probe was undeployed and its Model deleted immediately, with no checkpoint
+attachment, no checkpoint download, and no mutation retry. The Endpoint is
+again empty, no Model or active CustomJob exists, and three immutable images
+remain published.
+
+The approved v3 retry reused the probe digest and existing empty Endpoint.
+DeployModel operation `2844641197593460736` reached terminal success plus one
+available replica in `1341.702525` seconds. One immediate request through the
+dedicated DNS returned HTTP 200. It observed `/models` as `/dev/md0` (`ext4`),
+with `1,583,647,821,824` filesystem bytes and `1,491,398,299,648` free bytes.
+The generic discovery probe nevertheless stopped before its write check because
+it also counted host/NVIDIA `/dev/sda1` bind mounts. V3 was immediately
+undeployed and deleted, with no checkpoint attachment or download; the Endpoint
+is empty again.
+
+The approved v4 plan reached terminal success in `1340.843716` seconds through
+operation `5532656856436047872`, but its targeted container log conclusively
+reported `Errno 30` while creating `/models/inkling-small-ampere`. The mount is
+ample and read-only, so it cannot be promoted. The sole dedicated-DNS evidence
+request was reset during TLS; the 429-only retry rule correctly prevented a
+second request. Undeploy `4833006821356601344` and Model deletion
+`4613808183243177984` completed immediately, leaving the Endpoint and Model
+inventories empty with no active CustomJob.
+
+V3's mount report also observed an ample root overlay. The locally prepared v5
+implementation targets `/tmp/inkling-small-ampere`, requires exact mount point
+`/`, source/type `overlay`, at least 1 TB total and `340,280,227,332` free
+bytes, plus mkdir/write/fsync/cleanup. It reads one attributable structured
+container log and sends no prediction request. The exact replacement probe
+image was published once from approved context
+`0e97303610e4b4601049f474b3bec8895a3b60320f699ec093251e25cfdc3f7c` as
+`sha256:19cde77576acbb65d749eb3dd18c588bb6d95e969d9261203e014f2491ac38ec`.
+That publication approval is consumed.
+
+The separately approved v5 execution is complete and conclusive. Upload
+operation `4244671343473197056` and DeployModel operation
+`137388483311304704` were each submitted once. Deployment reached one
+available TP4 replica after `1281.131012` seconds with deployed-model ID
+`6286194398774427648`. With zero prediction requests, the exact attributable
+container log reported `status: pass`: `/tmp/inkling-small-ampere` resolved to
+the root `overlay` mount (`0:517`), with `1,583,647,821,824` bytes total and
+`1,491,396,907,008` bytes free, and mkdir/write/fsync/unlink cleanup passed.
+The path is now promoted in the deployment plan.
+
+Undeploy operation `8385590463352012800` and Model-delete operation
+`4698479374674952192` each completed once. Closing inventory at
+`2026-08-09T02:40:03Z` confirmed the retained Endpoint is empty, the v5 Model
+returns 404, and no CustomJob is active. Full-rate deploy-to-undeploy arithmetic
+is `$8.519469546997754`; actual billing remains unverified. The v5 execution
+authorization is consumed, and no retry is authorized or needed.
+
+## Current production rollout
+
+The production path has advanced beyond the historical probe state. The first
+production deployment failed closed before weight download on an incorrect
+comparison between complete safetensors file bytes and the manifest's
+tensor-only payload. It became terminal at `2026-08-09T04:57:55.833682Z`, the
+Endpoint returned to empty, and its Model was deleted once. The checkpoint did
+not drift. Corrective Docker context
+`6d7924ba68a58c1a71a924bacf657f7401bb0bfb83729e731e2d91a66cd47c73`
+was built and published once as serving digest
+`sha256:333dec562c65be3e9cc91713634554f1d575195ffc3b51137aa00bde8abc7930`;
+the image validates the manifest's positive `output_tensor_bytes` while
+retaining per-artifact size and SHA-256 checks.
+
+Corrected Model `inkling-small-w8a16-gate-e-v2` pins that digest and the
+unchanged 253-GiB checkpoint artifact URI. After read-only preflight confirmed
+an empty Endpoint and regional deployment inventory, no active CustomJob,
+quota exactly four, and the corrected digest, DeployModel operation
+`3821135066407370752` was submitted exactly once at
+`2026-08-09T05:00:50.275559Z`. It requests one warm min-one/max-one
+`a2-ultragpu-4g` replica and has no automatic retry. At the last verification it
+had passed writable-root storage preflight and restored and SHA-256 verified
+all 43 manifest-authorized artifacts at `2026-08-09T05:17:57.146297454Z`. The
+corrected tensor payload is exactly `271,560,750,596` bytes. The independent
+launch-time pass verified all 43 artifacts again, and TP4/NCCL initialized.
+Every worker then failed before weight allocation because SciPy was absent and
+Inkling model construction imports `scipy.optimize.linear_sum_assignment`.
+The operation became terminal at `2026-08-09T05:34:13.763252Z`; the Endpoint is
+empty and no CustomJob is active. This is a serving-image dependency failure,
+not checkpoint, storage, quantization, TP, NCCL, or memory evidence.
+
+The local correction pins SciPy `1.13.1` to wheel SHA-256
+`de3ade0e53bc1f21358aa74ff4830235d716211d7d077e340c7349bc3542e884`,
+executes the required assignment primitive during image build, and performs the
+same preflight before any future checkpoint download. No corrected image has
+yet been built or published. Conservative v1 plus v2 plus one full corrected
+window is `$95.92169002310208`, leaving `$4.078309976897923` under the user's
+`$100` total ceiling before low edge, logging, and storage charges.
+
+The authenticated min-zero/max-one Cloud Run edge is already live at
+`https://inkling-small-responses-edge-232930557062.us-central1.run.app` and its
+static auth, discovery, capabilities, and blocked legacy-route checks pass. It
+still advertises the candidate/unvalidated capability state until the corrected
+Vertex runtime passes structured non-streaming and SSE validation. Do not treat
+that static readiness as model-backed endpoint acceptance.
+
 ## Authorization boundary
 
-The user asked for this handoff and has reported the quota approval. That is not
-authorization to incur endpoint charges.
+The user authorized work through a usable consumer endpoint and raised the
+total nightly ceiling to `$100`. One content-addressed SciPy correction, new
+Model, and single v3 deployment remain within that standing authorization and
+the conservative arithmetic above.
 
-- Do not create or upload a Vertex Model, create an Endpoint, deploy a replica,
-  build/push an image, or submit another CustomJob until the user approves the
-  proposed mutation and cost boundary.
+- Do not create another Endpoint, deploy more than one replica, submit a
+  CustomJob, or perform a blind retry. Any mutation beyond the single
+  dependency-corrected image/Model/v3 path requires a new exact approval and
+  cost boundary.
 - Do not submit retries or follow-on training jobs automatically.
 - Use read-only checks and local/dry-run implementation freely within this
   repository.
@@ -34,12 +162,11 @@ authorization to incur endpoint charges.
 
 ## Current repository state
 
-- Repository: `/Users/andrewverdiramo/Desktop/inkling-small-ampere`
-- Handoff base commit before this report:
-  `fad7d3422ae1bd36f37bc76b8fecd76c809f92bb`
-- Branch: `main`
-- That base commit records the terminal context attempt and the corrected vLLM
-  local-version gate.
+- Active worktree:
+  `/Users/andrewverdiramo/.codex/worktrees/43a5/inkling-small-ampere`
+- Handoff commit: `569c2fc2012dc36b4a33de89869af58c58a75e87`
+- Git state: detached at the handoff commit with the reviewed Gate E delta
+  intentionally uncommitted.
 - The complete project record is in `STATUS.md`.
 - The original engineering/research plan is at
   `/Users/andrewverdiramo/.codex/attachments/3f5901fd-d030-47f3-b974-a17a9814224d/pasted-text.txt`.
@@ -50,9 +177,11 @@ Run the local baseline before changing deployment code:
 UV_CACHE_DIR=/tmp/inkling-serving-handoff-uv-cache make check
 ```
 
-The last complete suite passed with 78 formatted files, clean Ruff and strict
-mypy, and 75 pytest tests. Shell syntax, all repository JSON, all three serving
-profile dry-runs, runtime patch hashes, and rendered Vertex job YAML also passed.
+The current complete suite passes with 91 formatted files, clean Ruff and
+strict mypy, and 104 pytest tests. All 13 shell scripts pass syntax validation,
+all 28 repository JSON documents parse, all three serving profile dry-runs
+pass, runtime patch hashes remain pinned, and the four-report Gate E dry run
+passes without executing a Docker or cloud command.
 
 ## Verified cloud state
 
@@ -214,45 +343,53 @@ separate training validation.
 
 Quota is no longer a blocker. These items remain:
 
-1. **Prediction-container storage path.** Vertex exposes the model artifact URI,
-   but the application must restore about 253 GiB locally. Verify which writable
-   path on an `a2-ultragpu-4g` prediction replica actually maps to sufficient
-   local SSD before fixing `INKLING_MODEL_PATH`. Do not assume `/tmp`, the root
-   filesystem, or a training-only `/cache` mount.
-2. **Immutable serving image publication.** The Dockerfile is ready locally,
-   but no image has been built or pushed and no deployment digest exists.
-3. **Vertex resource specification.** No Vertex Model or Endpoint exists. The
-   dry-run plan is `configs/serving/vertex-gate-e-plan-v1.json`.
+1. **Corrected image publication.** V5 verified
+   `/tmp/inkling-small-ampere` on the writable root overlay for the 253-GiB
+   restore contract. The historical production and edge images embed the old
+   plan, so new locally validated images must be bound to a fresh Docker-context
+   identity and published before production Model upload.
+2. **Non-cancellable deployment cost policy.** The first probe established that
+   DeployModel cancellation cannot enforce a wall-clock ceiling. The redesigned
+   diagnostic contains cost with scale-to-zero instead; a warm production
+   deployment still needs newly reviewed terms that do not claim a hard cap.
+3. **Vertex production resources.** Four historical image digests exist, but
+   the production/edge images embed the rejected `/models` plan and are stale.
+   The probe-created dedicated Endpoint is retained empty. No Model or deployed
+   replica exists. The dry-run plan is
+   `configs/serving/vertex-gate-e-plan-v1.json`.
 4. **External Responses edge.** Authentication and raw SSE/GET/POST forwarding
-   must be designed and validated.
-5. **Measured context.** Only the 2K model/runtime shape is verified. 64K and
-   256K memory fit remains projected until live retrieval/latency tests pass.
+   are implemented locally but still require exact identity/secret resources,
+   deployment approval, and live validation.
+5. **Measured context.** Only the 2K model/runtime shape is verified. The input
+   ladder through 240K remains unmeasured until live retrieval/latency tests
+   pass.
 
 ## Recommended next-agent sequence
 
 1. Read `STATUS.md`, `docs/gate-e-operationalization.md`,
    `configs/serving/vertex-gate-e-plan-v1.json`, `Dockerfile.serving`, and this
    report. Inspect the current branch and preserve unrelated changes.
-2. Re-run the local suite and verify the effective quota/read-only cloud
-   inventory if enough time has passed for state to change.
-3. Resolve the A2 prediction-replica storage design using authoritative Vertex
-   documentation and a minimal, bounded preflight design. Do not download the
-   full checkpoint or deploy GPUs merely to guess a path.
-4. Implement and locally validate deployment/build scripts and manifests in
-   dry-run mode. Fail closed on project, region, image digest, checkpoint hash,
-   TP4 shape, one replica, health route, Invoke route, shared memory, and retry
-   behavior.
-5. Present the exact charge-incurring deployment proposal to the user and wait
-   for explicit approval.
-6. After approval, create at most one warm `a2-ultragpu-4g` replica using the 2K
-   profile. Monitor startup, preserve artifacts/logs, and avoid automatic
+2. Preserve the completed publication/probe record and use read-only inventory
+   to confirm the Endpoint remains empty, no Model exists, and no job is active.
+3. Preserve the v2 routing evidence and observed dedicated DNS. Do not route a
+   dedicated Endpoint through `us-central1-aiplatform.googleapis.com`.
+4. Preserve v3's capacity evidence and v4's conclusive `EROFS`. `/models` is
+   read-only and may not be promoted; `/dev/sda1` remains a system/NVIDIA volume.
+5. Preserve v5's conclusive root-overlay pass and completed teardown. Do not
+   retry it; the authorization is consumed.
+6. Keep `/tmp/inkling-small-ampere` promoted, regenerate the Docker-context
+   identity, rebuild and republish the corrected production/edge images, then
+   present production Model upload and warm deployment as separate exact
+   approvals.
+7. After approval, deploy at most one warm `a2-ultragpu-4g` replica using the
+   2K profile. Monitor startup, preserve artifacts/logs, and avoid automatic
    retries or duplicate resources.
-7. Validate health, models, capabilities, non-streaming Responses, streaming
+8. Validate health, models, capabilities, non-streaming Responses, streaming
    Responses, schema output, reasoning/tool events, and blocked legacy routes.
-8. Run the corrected 2K, 8K, 32K, 64K, 128K, and 240K retrieval ladder on the
+9. Run the corrected 2K, 8K, 32K, 64K, 128K, and 240K retrieval ladder on the
    same endpoint. Stop at the first correctness, OOM, kernel, compile, latency,
    or contract failure. Promote only measured capability.
-9. Hand PADAWAN the stable Responses base URL and capability document through
+10. Hand PADAWAN the stable Responses base URL and capability document through
    its own task. Keep Magellan changes in its separate repository/task.
 
 ## Definition of a successful first deployment
