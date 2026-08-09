@@ -93,6 +93,7 @@ def test_serving_profiles_are_responses_only(
     assert profile.api.response_store_enabled is False
     assert profile.runtime.max_model_len == max_model_len
     assert profile.runtime.kv_cache_memory_bytes == kv_cache_bytes
+    assert profile.runtime.async_scheduling is False
     command = profile.vllm_command(Path("/model"), host="127.0.0.1", port=9000, api_key="secret")
     assert command[:3] == ["vllm", "serve", "/model"]
     assert command[command.index("--max-model-len") + 1] == str(max_model_len)
@@ -100,6 +101,7 @@ def test_serving_profiles_are_responses_only(
     assert command[command.index("--api-key") + 1] == "secret"
     assert "--reasoning-parser" in command
     assert "--tool-call-parser" in command
+    assert "--no-async-scheduling" in command
     capability = profile.capability_document()
     assert capability["protocol"]["primary"] == "responses"
     assert capability["protocol"]["chat_completions_contract"] is False

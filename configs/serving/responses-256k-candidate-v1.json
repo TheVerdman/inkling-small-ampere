@@ -49,6 +49,7 @@
     "enforce_eager": true,
     "enable_prefix_caching": false,
     "enable_chunked_prefill": true,
+    "async_scheduling": false,
     "language_model_only": true,
     "disable_custom_all_reduce": true,
     "distributed_executor_backend": "mp",
@@ -80,6 +81,10 @@
     {
       "path": "patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch",
       "sha256": "3b051d4ed02a7eb6eda5c0f0b65cfb445b7e9ee8d8aa78ce4c40a62ad350d7c0"
+    },
+    {
+      "path": "patches/vllm/0004-inkling-structured-output-begin-token.patch",
+      "sha256": "5d726e8606401490d6abad519339d65d81b3ef0c2e87631d5ce944cb54257970"
     }
   ]
 }

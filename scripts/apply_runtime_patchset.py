@@ -26,6 +26,10 @@ PATCHSET: tuple[tuple[str, str], ...] = (
         "patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch",
         "3b051d4ed02a7eb6eda5c0f0b65cfb445b7e9ee8d8aa78ce4c40a62ad350d7c0",
     ),
+    (
+        "patches/vllm/0004-inkling-structured-output-begin-token.patch",
+        "5d726e8606401490d6abad519339d65d81b3ef0c2e87631d5ce944cb54257970",
+    ),
 )
 
 

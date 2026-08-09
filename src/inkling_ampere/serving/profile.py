@@ -56,6 +56,7 @@ class RuntimeSettings:
     enforce_eager: bool
     enable_prefix_caching: bool
     enable_chunked_prefill: bool
+    async_scheduling: bool
     language_model_only: bool
     disable_custom_all_reduce: bool
     distributed_executor_backend: str
@@ -168,6 +169,11 @@ class ServingProfile:
             if runtime.enable_prefix_caching
             else "--no-enable-prefix-caching"
         )
+        command.append(
+            "--async-scheduling"
+            if runtime.async_scheduling
+            else "--no-async-scheduling"
+        )
         if runtime.enforce_eager:
             command.append("--enforce-eager")
         if runtime.language_model_only:
@@ -246,6 +252,7 @@ class ServingProfile:
                 "kv_cache_memory_bytes": self.runtime.kv_cache_memory_bytes,
                 "prefix_caching": self.runtime.enable_prefix_caching,
                 "chunked_prefill": self.runtime.enable_chunked_prefill,
+                "async_scheduling": self.runtime.async_scheduling,
                 "language_model_only": self.runtime.language_model_only,
             },
             "validation": {
@@ -438,6 +445,9 @@ def load_serving_profile(path: Path) -> ServingProfile:
             ),
             enable_chunked_prefill=_boolean(
                 runtime.get("enable_chunked_prefill"), "runtime.enable_chunked_prefill"
+            ),
+            async_scheduling=_boolean(
+                runtime.get("async_scheduling"), "runtime.async_scheduling"
             ),
             language_model_only=_boolean(
                 runtime.get("language_model_only"), "runtime.language_model_only"
