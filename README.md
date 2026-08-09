@@ -12,11 +12,12 @@ four A100 80GB GPUs with the intended Marlin kernels, produced finite coherent
 See [STATUS.md](STATUS.md) for the exact evidence and scope.
 
 Gate E preparation now provides a fail-closed, **Responses-only** serving
-contract with 2K bring-up, 64K fallback, and 256K target profiles. The cloud
-endpoint has not been created: the project currently has zero custom-model
-A100 80GB serving quota, and the 253 GiB checkpoint's A2 local-SSD restore path
-must be verified first. See the [Gate E operationalization
-plan](docs/gate-e-operationalization.md).
+contract with 2K bring-up, 64K fallback, and 256K target profiles. Serving
+quota is verified at exactly four custom-model A100 80GB GPUs, the immutable
+serving and edge images are published, and one dedicated Endpoint is retained
+empty. No production Model or GPU deployment exists. The 253 GiB checkpoint's
+A2 prediction restore path must still be verified before the warm service can
+be deployed. See the [Gate E operationalization plan](docs/gate-e-operationalization.md).
 
 - Exact source: `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`
 - Exact source payload: 265,956,439,090 elements and 495.382 GiB of tensor data
@@ -87,18 +88,36 @@ INKLING_API_KEY=... \
   --output results/raw/gate-e-responses-endpoint.json
 ```
 
-While serving quota is pending, the reviewed paid context-window probe uses
-the existing training quota. It restores the checkpoint once, launches one
-256K-configured Responses server, and stops on the first failed stage:
+The serving quota is now verified at exactly 4/4. Inspect the fail-closed
+Vertex request bodies, prediction bootstrap gates, conditional storage probe,
+and Responses edge without building an image or touching cloud state:
 
 ```bash
-bash scripts/gcp/submit_vertex_long_context.sh
+make vertex-gate-e-dry-run
 ```
 
-This submits exactly one no-retry `a2-ultragpu-4g` CustomJob. Its three-hour
-execution timeout is a hard upper bound, not an expected duration; ten minutes
-are reserved for server shutdown and artifact upload. The staged targets are
-2K, 8K, 32K, 64K, 128K, and 240K input tokens.
+The prior separately authorized no-retry training-quota context attempt is
+terminal and inconclusive; it stopped before model load. Do not rerun
+`scripts/gcp/submit_vertex_long_context.sh` without new explicit authorization.
+The historical serving and edge images are published, and the dedicated
+Endpoint created for the probe is retained empty. Those images embed the old
+unresolved storage plan and must be rebuilt and republished before production.
+The warm production service is still blocked on corrected production/edge
+image publication, a cost policy that does not depend on cancelling a
+DeployModel LRO, disabled Cloud Run and Secret
+Manager APIs, edge identity/auth resources, and exact production/edge
+approvals. The sub-1-GiB diagnostic image is published. V2 exposed the
+dedicated DNS but used the wrong RawPredict hostname. V3 then routed correctly,
+returned HTTP 200, and discovered ample `/models` capacity, but stopped before
+its write probe because a host/NVIDIA system disk invalidated the overly broad
+global-device-uniqueness assumption. V4 then conclusively reached the write
+gate and found `/models` mounted read-only (`EROFS`). V5 then verified
+`/tmp/inkling-small-ampere` on the observed
+1.58-TB root overlay with exact mount/source, free-space, mkdir, write, fsync,
+and cleanup checks. Its new `linux/amd64` image is published immutably as
+`sha256:19cde77576acbb65d749eb3dd18c588bb6d95e969d9261203e014f2491ac38ec`;
+the publication and charged-execution approvals are consumed. The probe sent
+zero prediction requests, passed, was fully torn down, and promoted the path.
 
 On the authorized GCP project, the bounded four-A100 runtime reconnaissance is:
 

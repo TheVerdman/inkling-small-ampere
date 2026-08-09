@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import importlib.metadata
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from inkling_ampere.serving.profile import ServingProfile, load_serving_profile
 
 _DEFAULT_PATCHSET_MARKER = Path("/opt/inkling/runtime-patchset.json")
+_REQUIRED_NUMPY_VERSION = "2.2.6"
+_REQUIRED_SCIPY_VERSION = "1.13.1"
 
 
 def _matches_reviewed_vllm_version(installed: str, required: str) -> bool:
@@ -24,6 +28,57 @@ def _matches_reviewed_vllm_version(installed: str, required: str) -> bool:
         return False
     public, separator, local = installed.partition("+")
     return public == required and separator == "+" and bool(local)
+
+
+def verify_numeric_runtime() -> dict[str, object]:
+    """Exercise the exact SciPy primitive imported by Inkling model construction."""
+
+    expected = {
+        "numpy": _REQUIRED_NUMPY_VERSION,
+        "scipy": _REQUIRED_SCIPY_VERSION,
+    }
+    observed: dict[str, str] = {}
+    for package, required in expected.items():
+        try:
+            installed = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError as exc:
+            raise RuntimeError(f"required numeric runtime package is missing: {package}") from exc
+        observed[package] = installed
+        if installed != required:
+            raise RuntimeError(
+                f"numeric runtime version mismatch for {package}: "
+                f"expected {required}, observed {installed}"
+            )
+
+    try:
+        optimize = importlib.import_module("scipy.optimize")
+        solver = optimize.linear_sum_assignment
+        rows, columns = solver(
+            [
+                [4.0, 1.0, 3.0],
+                [2.0, 0.0, 5.0],
+                [3.0, 2.0, 2.0],
+            ]
+        )
+    except (AttributeError, ImportError, OSError) as exc:
+        raise RuntimeError("SciPy linear_sum_assignment runtime preflight failed") from exc
+    row_values = [int(value) for value in rows]
+    column_values = [int(value) for value in columns]
+    if row_values != [0, 1, 2] or column_values != [1, 0, 2]:
+        raise RuntimeError(
+            "SciPy linear_sum_assignment returned an unexpected assignment: "
+            f"rows={row_values}, columns={column_values}"
+        )
+    return {
+        "schema_version": "1.0.0",
+        "kind": "inkling-serving-numeric-runtime-preflight",
+        "status": "pass",
+        "versions": observed,
+        "linear_sum_assignment": {
+            "rows": row_values,
+            "columns": column_values,
+        },
+    }
 
 
 def _model_path(value: str | None) -> Path:
@@ -53,10 +108,15 @@ def _port(cli_port: int | None) -> int | None:
     return selected
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, *, cancelled: Callable[[], bool] | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+        while True:
+            if cancelled is not None and cancelled():
+                raise RuntimeError("checkpoint verification cancelled")
+            chunk = handle.read(8 * 1024 * 1024)
+            if not chunk:
+                break
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -99,7 +159,12 @@ def _checkpoint_records(manifest: dict[str, Any]) -> list[tuple[str, int, str]]:
     return records
 
 
-def _verify_checkpoint_payload(model_path: Path, manifest: dict[str, Any]) -> None:
+def _verify_checkpoint_payload(
+    model_path: Path,
+    manifest: dict[str, Any],
+    *,
+    cancelled: Callable[[], bool] | None = None,
+) -> None:
     records = _checkpoint_records(manifest)
     print(f"Verifying {len(records)} checkpoint payload files before GPU allocation...", flush=True)
     for index, (relative_path, expected_size, expected_sha256) in enumerate(records, start=1):
@@ -117,7 +182,7 @@ def _verify_checkpoint_payload(model_path: Path, manifest: dict[str, Any]) -> No
                 f"checkpoint artifact size mismatch for {relative_path}: "
                 f"expected {expected_size}, observed {observed_size}"
             )
-        observed_sha256 = _sha256_file(artifact)
+        observed_sha256 = _sha256_file(artifact, cancelled=cancelled)
         if observed_sha256 != expected_sha256:
             raise RuntimeError(
                 f"checkpoint artifact hash mismatch for {relative_path}: "
@@ -126,9 +191,16 @@ def _verify_checkpoint_payload(model_path: Path, manifest: dict[str, Any]) -> No
         print(f"Verified checkpoint artifact {index}/{len(records)}: {relative_path}", flush=True)
 
 
-def verify_runtime(profile: ServingProfile, model_path: Path, marker_path: Path) -> None:
+def verify_runtime(
+    profile: ServingProfile,
+    model_path: Path,
+    marker_path: Path,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+) -> None:
     """Fail before GPU allocation when the image or checkpoint is not the reviewed one."""
 
+    verify_numeric_runtime()
     if not model_path.is_dir():
         raise RuntimeError(f"checkpoint directory does not exist: {model_path}")
     for required in ("config.json", "model.safetensors.index.json", "conversion-manifest.json"):
@@ -190,7 +262,7 @@ def verify_runtime(profile: ServingProfile, model_path: Path, marker_path: Path)
         raise RuntimeError(
             f"runtime patch marker mismatch: expected {expected}, observed {observed}"
         )
-    _verify_checkpoint_payload(model_path, manifest)
+    _verify_checkpoint_payload(model_path, manifest, cancelled=cancelled)
 
 
 def build_environment(profile: ServingProfile) -> dict[str, str]:

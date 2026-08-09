@@ -1,6 +1,6 @@
 # Known limitations
 
-As of Gate E local preparation on 2026-08-01:
+As of Gate E local operationalization on 2026-08-08:
 
 - Physical topology and driver details come from the preserved June 20 run
   because the pinned vLLM container lacks `nvidia-smi`; live GPU identity,
@@ -37,14 +37,55 @@ As of Gate E local preparation on 2026-08-01:
   projections, not validated context-window claims.
 - vLLM response storage is deliberately disabled; clients must send explicit
   history. `previous_response_id` is not a durable or replica-safe contract.
-- Vertex custom-model A100 80GB serving quota was zero in `us-central1` at the
-  last read-only check; four serving GPUs are required for one warm replica.
-  The user has submitted a request for four. Existing training quota can run a
-  bounded context-validation CustomJob, but cannot create or substitute for a
-  warm prediction endpoint.
+- Vertex custom-model A100 80GB serving quota is verified at exactly 4/4 in
+  `us-central1`, enough for one warm TP4 replica and no second replica. Quota is
+  not a capacity reservation. One dedicated Endpoint exists empty; no Model,
+  deployed replica, or active CustomJob exists, and no production deployment
+  is authorized merely by quota approval.
+- Artifact Registry and the `inkling-serving` repository exist with two
+  historical serving/edge digests. They embed the rejected `/models` plan and
+  require corrected republication. Cloud Build and scanning remained
+  disabled. Cloud Run and Secret Manager are still disabled and no edge
+  service, identity, or secret exists.
 - Vertex documents 1,500 GiB local SSD on `a2-ultragpu-4g` but not the custom
   prediction container path that maps to it. The 253 GiB checkpoint restore
-  path must be verified before deployment.
+  path therefore had to pass fail-closed mount, filesystem-type, capacity,
+  free-space, and write probes before checkpoint download. V4 conclusively showed that the
+  ample `/models` `ext4` block device is read-only to the container. V5 instead
+  requires exact mount point `/`, source/type `overlay`, at least 1 TB total,
+  sufficient free bytes, and mkdir/write/fsync/cleanup at
+  `/tmp/inkling-small-ampere`; other filesystems fail closed. The local
+  conditional probe downloaded no checkpoint. Its first live run was
+  inconclusive: DeployModel was non-cancellable, exceeded the intended
+  900-second wall-clock window, never became ready, and emitted no mount
+  evidence. The v5 retry uses a sub-1-GiB probe-only image, structured container
+  log evidence, zero prediction requests, min/initial/max `0/1/1`, and
+  300-second scale-to-zero periods.
+  That avoids depending on LRO cancellation but does not create a hard total
+  cost cap. Flex-start is unavailable because the effective preemptible A100
+  80GB serving quota is zero. The v5 probe image was published by immutable
+  digest after one approved local build and one push. The separately approved
+  charged run then passed the exact root-overlay contract with 1.583 TB total,
+  1.491 TB free, and successful mkdir/write/fsync/unlink cleanup, using zero
+  prediction requests. It was fully torn down and
+  `/tmp/inkling-small-ampere` is now promoted. Both authorizations are consumed;
+  no retry is authorized, and the old hard-cap claim must not be reused.
+  Its immutable embedded `--dry-run` string necessarily reflects the
+  pre-publication state; the post-publication plan records the digest and
+  consumed authorization, while non-dry probe execution uses only the embedded
+  target, storage contract, and evidence identity.
+- The published-documentation branch is exhausted without resolving storage.
+  Vertex's live v1 schema has no disk field on `DedicatedResources` or
+  `DeployedModel`. Google's demonstrative vLLM sample uses `/tmp/model_dir`,
+  but it does not identify the backing mount or guarantee capacity. V3 supplied
+  the root-overlay capacity observation, and v5 supplied the live durable-write
+  evidence that promoted `/tmp/inkling-small-ampere` operationally despite the
+  documentation gap.
 - Vertex Invoke forwards and streams arbitrary routes but is a Google POST RPC,
   not a raw OpenAI GET/POST base URL. PADAWAN needs a thin authenticated edge
-  that preserves the Responses contract.
+  that serves the two GET documents and preserves Responses POST/SSE bytes.
+  Edge image, service account, endpoint-scoped least-privilege binding, and
+  pinned Secret Manager version remain unresolved and unprovisioned. The
+  planned Cloud Run service disables platform invoker IAM so an ordinary
+  OpenAI `Authorization: Bearer` header reaches the app, but the edge still
+  requires and constant-time checks that application bearer secret.

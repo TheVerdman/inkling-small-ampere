@@ -16,6 +16,68 @@ startup marker. `validate_responses_endpoint.py` checks model discovery,
 capability negotiation, strict structured output, token usage, SSE parsing,
 and the terminal `response.completed` object through the consumer-facing edge.
 
+`render_vertex_gate_e.py` validates the pinned project, region, quota, TP4
+shape, one-replica limit, image-digest syntax, checkpoint identity, storage
+contract, Responses-only routes, no-retry controls, and public compute-price
+observation. It renders Model upload, dedicated Endpoint creation, and
+DeployModel request bodies but never sends them; its output is deliberately
+non-executable and lists every unresolved input and approval phase. It also
+renders the profile-derived GET documents and the v1beta1
+`InvokeRequest.httpBody` template for the Responses edge, using the dedicated
+Endpoint DNS observed during the successful v2 diagnostic deployment.
+
+The renderer also emits the exact local-build/Artifact Registry publication
+sequence, including the pre-cloud 50 GiB size stop and local container dry
+runs. That sequence is descriptive argv data only; the renderer never calls
+Docker or gcloud and cannot publish an image.
+It also fingerprints the non-ignored Docker context and derives the candidate
+tag from that hash so approval cannot silently carry across source drift.
+
+`inkling_ampere.serving.bootstrap` is the prediction-container entrypoint. It
+opens port 8080 immediately for liveness, returns HTTP 503 while it validates
+the exact Vertex environment and reviewed root-overlay target, restores every
+manifest-authorized checkpoint file from `AIP_STORAGE_URI`, verifies all
+hashes and the runtime patch marker, and only then hands the port to vLLM. A
+fatal preflight remains unhealthy until operator teardown and does not retry.
+
+`inkling_ampere.serving.storage_probe` is the conditional prediction-only
+mount preflight. Its dry run never inspects mounts. A separately approved live
+probe required an A2 prediction replica but no `artifactUri`; v5 accepts
+only the sufficiently large root `overlay` containing
+`/tmp/inkling-small-ampere`, performs a
+tiny write/fsync/delete probe, exposes the evidence at `/storage-probe`, and
+downloads no checkpoint. Diagnostic health now becomes ready after inspection
+completes for either pass or fail, while the explicit report status remains the
+production gate. The first live attempt never became ready and proved that a
+DeployModel LRO cannot be cancelled to enforce the reviewed 900-second wall
+clock. The published probe-only image then deployed successfully in v2, but a
+shared regional RawPredict URL was rejected because the Endpoint is dedicated.
+V3 reused that digest, reached one available replica, and returned HTTP 200
+through the dedicated DNS. It discovered ample `/models` capacity but stopped
+before the write probe because discovery also counted a host/NVIDIA system
+device. V4 then targeted `/models` and proved it read-only with `EROFS`; a TLS
+reset prevented its response retrieval, but the structured container log was
+conclusive. V5 used min/initial/max `0/1/1`, zero prediction traffic, and the
+uniquely identified container log. It passed the root-overlay capacity and
+durable-write contract, was immediately torn down, and promoted
+`/tmp/inkling-small-ampere`. Its authorization is consumed; it does not claim a
+hard total-cost cap and is not authorized for retry.
+
+`inkling_ampere.serving.edge` is the thin Responses-only transport adapter. It
+serves the profile-derived model and capability documents, rejects legacy
+Completions routes, enforces a bearer secret, wraps an unchanged Responses
+request in the Vertex v1beta1 Invoke `HttpBody` envelope, and streams returned
+JSON or SSE bytes without reinterpretation or retry. Its dry run opens no
+socket, requests no metadata token, and sends no upstream request.
+
+`Dockerfile.edge` packages only this dependency-free path on a separately
+pinned Python base rather than carrying the vLLM/GPU serving image.
+
+`Dockerfile.storage-probe` uses the same pinned Python base for the no-checkpoint
+diagnostic, but deliberately retains the serving image's root user so the mount
+write test measures the production bootstrap's effective access. It has a
+separate 1-GiB pre-push cap and publication approval phase.
+
 `gpu/long_context_responses_probe.py` starts exactly one local patched server,
 runs the basic Responses acceptance suite, and then executes early/middle/late
 needle retrieval at 2K, 8K, 32K, 64K, 128K, and 240K input tokens. Every stage

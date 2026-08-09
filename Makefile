@@ -1,11 +1,15 @@
 PYTHON ?= python3
 UV ?= $(if $(wildcard .tools/uv-bootstrap/bin/uv),.tools/uv-bootstrap/bin/uv,uv)
+GATE_E_PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(UV) run --frozen python)
+PYTEST ?= $(if $(wildcard .venv/bin/pytest),.venv/bin/pytest,$(UV) run --frozen pytest)
+RUFF ?= $(if $(wildcard .venv/bin/ruff),.venv/bin/ruff,$(UV) run --frozen ruff)
+MYPY ?= $(if $(wildcard .venv/bin/mypy),.venv/bin/mypy,$(UV) run --frozen mypy)
 STORAGE_PATH ?= .
 DOCTOR_ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory test lint format format-check typecheck check
+.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory vertex-gate-e-dry-run test lint format format-check typecheck check
 
 help:
 	@echo "Inkling-Small Ampere development commands"
@@ -14,8 +18,9 @@ help:
 	@echo "  make doctor-strict  Require the four-A100 target contract"
 	@echo "  make inspect-checkpoint  Read pinned checkpoint headers only"
 	@echo "  make model-memory   Project profiles and all four-rank placements"
+	@echo "  make vertex-gate-e-dry-run  Render fail-closed Vertex, bootstrap, probe, and edge gates"
 	@echo "  make bootstrap      Install pinned uv locally and sync the dev environment"
-	@echo "  make check          Run formatting, lint, types, and tests"
+	@echo "  make check          Run hermetic formatting, lint, types, and tests"
 	@echo "  make format         Apply Ruff formatting and safe lint fixes"
 
 bootstrap:
@@ -45,20 +50,35 @@ model-memory:
 	PYTHONPATH=src $(UV) run --frozen python scripts/model_memory.py
 	PYTHONPATH=src $(UV) run --frozen python scripts/simulate_sharding.py
 
+vertex-gate-e-dry-run:
+	PYTHONPATH=src $(GATE_E_PYTHON) scripts/render_vertex_gate_e.py
+	PYTHONPATH=src $(GATE_E_PYTHON) -m inkling_ampere.serving.bootstrap \
+		--profile configs/serving/responses-2k-bringup-v1.json \
+		--plan configs/serving/vertex-gate-e-plan-v1.json \
+		--model-path /tmp/inkling-small-ampere \
+		--dry-run
+	PYTHONPATH=src $(GATE_E_PYTHON) -m inkling_ampere.serving.storage_probe \
+		--plan configs/serving/vertex-gate-e-plan-v1.json \
+		--dry-run
+	PYTHONPATH=src $(GATE_E_PYTHON) -m inkling_ampere.serving.edge \
+		--profile configs/serving/responses-2k-bringup-v1.json \
+		--plan configs/serving/vertex-gate-e-plan-v1.json \
+		--dry-run
+
 test:
-	$(UV) run --frozen pytest
+	$(PYTEST)
 
 lint:
-	$(UV) run --frozen ruff check .
+	$(RUFF) check .
 
 format:
-	$(UV) run --frozen ruff format .
-	$(UV) run --frozen ruff check --fix .
+	$(RUFF) format .
+	$(RUFF) check --fix .
 
 format-check:
-	$(UV) run --frozen ruff format --check .
+	$(RUFF) format --check .
 
 typecheck:
-	$(UV) run --frozen mypy src tests
+	$(MYPY) src tests
 
 check: format-check lint typecheck test

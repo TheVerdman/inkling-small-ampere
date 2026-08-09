@@ -10,6 +10,7 @@ import pytest
 from inkling_ampere.instrumentation.gcs import (
     GCSError,
     GCSResumableUploader,
+    _download_sha256,
     crc32c_base64_from_gcs_metadata,
 )
 
@@ -153,6 +154,21 @@ def test_download_resumes_and_verifies_content(tmp_path: Path) -> None:
     assert not partial.exists()
 
 
+def test_download_honors_cancellation_before_transfer(tmp_path: Path) -> None:
+    payload = b"cancelled"
+    destination = tmp_path / "cancelled.bin"
+    downloader = _FakeDownloader(tmp_path / "state", payload)
+
+    with pytest.raises(GCSError, match="cancelled"):
+        downloader.download(
+            "checkpoint/cancelled.bin",
+            destination,
+            cancelled=lambda: True,
+        )
+
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     ("range_header", "expected"),
     [
@@ -163,3 +179,17 @@ def test_download_resumes_and_verifies_content(tmp_path: Path) -> None:
 )
 def test_resumable_range_parsing(range_header: str | None, expected: int) -> None:
     assert GCSResumableUploader._next_offset_from_range(range_header) == expected
+
+
+def test_download_digest_can_use_pinned_hash_when_copied_metadata_is_absent() -> None:
+    expected = "a" * 64
+
+    assert _download_sha256({"size": "1"}, expected_sha256=expected) == expected
+
+
+def test_download_digest_rejects_conflicting_remote_metadata() -> None:
+    with pytest.raises(GCSError, match="differs from expected"):
+        _download_sha256(
+            {"metadata": {"sha256": "b" * 64}},
+            expected_sha256="a" * 64,
+        )

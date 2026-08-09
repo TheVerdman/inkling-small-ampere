@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pytest import MonkeyPatch
@@ -10,6 +12,7 @@ from pytest import MonkeyPatch
 from inkling_ampere.serving.launch import (
     _matches_reviewed_vllm_version,
     build_environment,
+    verify_numeric_runtime,
     verify_runtime,
 )
 from inkling_ampere.serving.profile import ServingProfileError, load_serving_profile
@@ -37,6 +40,39 @@ def test_reviewed_vllm_version_accepts_only_matching_local_builds(
     installed: str, required: str, expected: bool
 ) -> None:
     assert _matches_reviewed_vllm_version(installed, required) is expected
+
+
+def test_numeric_runtime_preflight_pins_versions_and_assignment(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    versions = {"numpy": "2.2.6", "scipy": "1.13.1"}
+    monkeypatch.setattr(
+        "inkling_ampere.serving.launch.importlib.metadata.version",
+        lambda package: versions[package],
+    )
+    monkeypatch.setattr(
+        "inkling_ampere.serving.launch.importlib.import_module",
+        lambda package: SimpleNamespace(
+            linear_sum_assignment=lambda matrix: ([0, 1, 2], [1, 0, 2])
+        ),
+    )
+
+    report = verify_numeric_runtime()
+
+    assert report["status"] == "pass"
+    assert report["versions"] == versions
+
+
+def test_numeric_runtime_preflight_rejects_missing_scipy(monkeypatch: MonkeyPatch) -> None:
+    def version(package: str) -> str:
+        if package == "scipy":
+            raise importlib.metadata.PackageNotFoundError(package)
+        return "2.2.6"
+
+    monkeypatch.setattr("inkling_ampere.serving.launch.importlib.metadata.version", version)
+
+    with pytest.raises(RuntimeError, match="required numeric runtime package is missing: scipy"):
+        verify_numeric_runtime()
 
 
 @pytest.mark.parametrize(
@@ -145,9 +181,16 @@ def test_runtime_verification_checks_manifest_identity(
             }
         )
     )
+    versions = {"vllm": installed_vllm, "numpy": "2.2.6", "scipy": "1.13.1"}
     monkeypatch.setattr(
         "inkling_ampere.serving.launch.importlib.metadata.version",
-        lambda package: installed_vllm,
+        lambda package: versions[package],
+    )
+    monkeypatch.setattr(
+        "inkling_ampere.serving.launch.importlib.import_module",
+        lambda package: SimpleNamespace(
+            linear_sum_assignment=lambda matrix: ([0, 1, 2], [1, 0, 2])
+        ),
     )
 
     verify_runtime(profile, model_path, marker_path)
