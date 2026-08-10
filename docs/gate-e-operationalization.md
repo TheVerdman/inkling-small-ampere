@@ -1,9 +1,9 @@
 # Gate E: Responses endpoint operationalization
 
-Status: **the recovered model-config-EOS hotfix passed live strict JSON in both
-non-streaming and SSE modes on one four-A100 Vertex replica; ordinary SSE also
-passed; the replica and temporary Model were removed immediately, and the
-retained dedicated Endpoint is empty**.
+Status: **the recovered model-config-EOS hotfix passed live strict JSON and the
+production-topology 2K-to-240K context ladder on one four-A100 Vertex replica;
+the replica and temporary Model were removed immediately, and the retained
+dedicated Endpoint is empty**.
 
 ## Final EOS-hotfix acceptance
 
@@ -43,6 +43,52 @@ The chronology below is retained as historical diagnosis. Statements about
 pending JSON/SSE validation or earlier image blockers are superseded by this
 section for the exact hotfix image; no continuously warm consumer endpoint or
 Cloud Run edge is retained.
+
+## Production-topology context promotion
+
+Commit `77bc532899bfb310bd7324c923eb6b7cd1847721` ran the reviewed
+`gate-e-long-context-production-v1` suite through the retained dedicated
+Endpoint using the same immutable hotfix image, one `a2-ultragpu-4g`, four A100
+80GB GPUs, min/max one replica, and a 3,600-second Endpoint inference timeout.
+Model upload operation `5103395422324391936` created temporary Model v8;
+DeployModel operation `8977898476746571776` was submitted exactly once and
+became ready with deployed-model ID `6772020208577019904`. No inference request
+was retried.
+
+Every strict-schema streaming retrieval stage passed:
+
+- 2K: 2,043 actual input tokens, 21.73 seconds total;
+- 8K: 8,199 actual, 15.05 seconds;
+- 32K: 32,769 actual, 20.66 seconds;
+- 64K: 65,532 actual, 33.31 seconds;
+- 128K: 131,070 actual, 59.85 seconds;
+- 240K: 239,997 actual, 112.67 seconds to first output and 122.44 seconds total.
+
+All six stages returned the exact seeded opening, middle, and closing values,
+complete usage, a terminal `response.completed` event, and no contract failure.
+The promoted claim is therefore a measured **240K input target** on this exact
+single-request production topology, not an unmeasured 256K or concurrent-load
+claim. Undeploy operation `151916330449108992` and Model-delete operation
+`3778439930389200896` completed immediately afterward; independent inventory
+confirmed the Endpoint empty and Model v8 absent.
+
+The first controller attempt reached a ready replica but a local child-process
+import-path defect stopped the probe before token minting or any inference
+request. Its fail-closed path undeployed and deleted Model v8 immediately. The
+launcher was fixed, exercised through the deliberate pre-network boundary, and
+committed before the successful replacement. The exact successful record is
+`manifests/gate-e-production-context-validation-20260810.json`.
+
+Successful-run full-rate arithmetic is `$21.875305991951375`; the failed
+harness launch adds `$20.084006228949118`, for a combined
+`$41.95931222090049`. Actual billing remains unsettled. The original metrics
+collector used the legacy `ml.googleapis.com` namespace and returned no series.
+A corrected read-only `aiplatform.googleapis.com` query recovered 43
+accelerator-memory points, 43 duty-cycle points, and 24 HTTP-200 responses,
+exactly matching 18 token-calibration requests plus six generation requests.
+The memory series peaked at `85,890,039,808` bytes and duty cycle at `0.95`;
+Vertex prediction-latency series remained absent, so the probe's SSE timings
+are the latency source of record.
 
 ## Live production rollout
 

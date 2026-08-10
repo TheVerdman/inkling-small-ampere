@@ -7,6 +7,7 @@ from scripts.gcp.run_vertex_production_context_ladder import (
     ENDPOINT_INFERENCE_TIMEOUT_SECONDS,
     IMAGE_URI,
     MODEL_ID,
+    MONITORING_METRICS,
     REPO_ROOT,
     _deploy_body,
     _dry_run_plan,
@@ -82,3 +83,12 @@ def test_controller_child_probe_imports_with_exact_launch_environment() -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert "Run the reviewed context ladder" in completed.stdout
+
+
+def test_controller_queries_vertex_ai_endpoint_metrics() -> None:
+    assert MONITORING_METRICS == (
+        "aiplatform.googleapis.com/prediction/online/accelerator/memory/bytes_used",
+        "aiplatform.googleapis.com/prediction/online/accelerator/duty_cycle",
+        "aiplatform.googleapis.com/prediction/online/prediction_latencies",
+        "aiplatform.googleapis.com/prediction/online/response_count",
+    )

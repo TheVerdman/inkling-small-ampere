@@ -1,6 +1,6 @@
 # Project status
 
-Last verified: 2026-08-09 22:31 EDT (2026-08-10 02:31 UTC)
+Last verified: 2026-08-10 01:52 EDT (2026-08-10 05:52 UTC)
 
 ## Executive state
 
@@ -56,6 +56,50 @@ arithmetic is `$21.380809946262694` for `3328.1281259059906` seconds at the
 observed `$23.1273896/node-hour`; actual billing and ancillary storage/logging
 charges remain unverified. Exact evidence is tracked in
 `manifests/gate-e-strict-json-live-validation-20260810.json`.
+
+The same immutable hotfix image now also passes the production-topology context
+ladder. Source commit `77bc532899bfb310bd7324c923eb6b7cd1847721`
+uploaded temporary Model v8 once, submitted DeployModel operation
+`8977898476746571776` once, and reached one ready `a2-ultragpu-4g` replica with
+deployed-model ID `6772020208577019904`. The retained dedicated Endpoint used a
+3,600-second inference timeout. No inference request was retried. Exact
+strict-schema streaming retrieval passed at every target:
+
+- 2K: 2,043 actual input tokens, 21.73 seconds total;
+- 8K: 8,199 actual, 15.05 seconds;
+- 32K: 32,769 actual, 20.66 seconds;
+- 64K: 65,532 actual, 33.31 seconds;
+- 128K: 131,070 actual, 59.85 seconds;
+- 240K: 239,997 actual, 112.67 seconds to first output and 122.44 seconds total.
+
+All stages returned the exact seeded opening, middle, and closing needles,
+complete usage, and terminal `response.completed` events. This promotes a
+measured 240K single-request claim on the exact production topology; it does
+not promote a literal 256K request, batching, concurrency, or task quality.
+Undeploy operation `151916330449108992` and Model-delete operation
+`3778439930389200896` completed immediately. Independent inventory confirmed
+the Endpoint empty and Model v8 absent, so zero GPU compute remains active.
+
+The first controller attempt had reached a ready replica, but its child probe
+failed on a local `PYTHONPATH` packaging defect before token minting or any
+inference request. Its fail-closed teardown completed in seconds. The launcher
+was fixed, exercised through configuration loading and the deliberate
+pre-network boundary, committed, and covered by the 121-test suite before the
+successful replacement. The combined record is
+`manifests/gate-e-production-context-validation-20260810.json`.
+
+The successful deploy-to-cleanup interval was `3405.101178` seconds, or
+`$21.875305991951375` at the observed `$23.1273896/node-hour`; the failed
+harness attempt adds `$20.084006228949118`, for combined full-rate arithmetic
+of `$41.95931222090049`. These are conservative calculations, not settled
+billing, and exclude ancillary charges. A corrected retrospective Cloud
+Monitoring query recovered 43 accelerator-memory samples, 43 duty-cycle
+samples, and exactly 24 HTTP-200 responses: 18 calibration requests plus six
+generation requests. The reported memory series peaked at `85,890,039,808`
+bytes and duty cycle at `0.95`. Prediction latency series were absent, so the
+probe's per-request SSE timings remain authoritative. The controller now uses
+the current `aiplatform.googleapis.com` metric namespace; its initial legacy
+`ml.googleapis.com` query is preserved as empty evidence rather than rewritten.
 
 ## Historical Gate E rollout update
 
@@ -151,18 +195,18 @@ reconciliation retains exact matching for the deterministic one-token and
 fixed-smoke outputs, treats valid long-form variation as a diagnostic, and
 passes every required reproducibility check.
 
-**Gate E's local Responses-only serving contract is implemented and locally
-validated.** The repo now has a pinned serving image, fail-closed checkpoint
-and patch verification, staged 2K/64K/256K profiles, a PADAWAN capability
-route, and a wire-level Responses validator. This does not claim a live HTTP
-endpoint or a context-window pass beyond 2K.
+**Gate E's Responses-only serving contract is implemented and live-validated
+through direct Vertex Invoke.** The repo has a pinned serving image,
+fail-closed checkpoint and patch verification, staged 2K/64K/256K-configured
+profiles, a PADAWAN capability route, and a wire-level Responses validator.
+Strict JSON and the production-topology ladder through a 240K target pass. No
+continuously warm consumer edge is retained.
 
-The bounded training-quota context harness is also locally complete. It uses
-one checkpoint restore and one server load, validates the Responses contract,
-then tests 2K, 8K, 32K, 64K, 128K, and 240K input tokens with streaming
-early/middle/late retrieval, exact usage and latency records, and device-wide
-HBM telemetry. It has no automatic retry, stops on the first failed stage, and
-has a three-hour execution ceiling with a ten-minute evidence-upload reserve.
+The bounded training-quota context harness remains locally complete, but its
+historical cloud attempt stopped before model load. The higher-value serving
+quota path has now executed the same ordered 2K, 8K, 32K, 64K, 128K, and 240K
+retrieval contract on the actual production topology. It used no request retry
+and stopped on the first failed stage; all stages passed.
 
 Serving-quota request `73959678` is effective at `4` custom-model-serving A100
 80GB GPUs in `us-central1`, reconfirmed through Service Usage at
@@ -621,33 +665,31 @@ All failed and cancelled runs remain part of the evidence record.
 | Clean automated Gate D process artifact | Pass |
 | Fresh-process inference reproducibility on one worker | Pass |
 | Independent cloud-provisioning reproducibility | Not required; not demonstrated |
-| Responses-only serving profiles, launcher, image, and validator | Locally complete |
-| Consumer-facing warm endpoint | The exact 2K TP4 hotfix image passed direct Vertex Invoke strict JSON (non-streaming and streaming) plus ordinary SSE. The bounded replica and temporary Model were then removed; no continuously warm consumer endpoint is retained. |
+| Responses-only serving profiles, launcher, image, and validator | Live direct-Vertex strict JSON and staged context validation pass |
+| Consumer-facing warm endpoint | The exact TP4 hotfix image passed direct Vertex Invoke strict JSON and the 2K-to-240K ladder. The bounded replica and temporary Model were then removed; no continuously warm consumer endpoint is retained. |
 | Training-quota staged context ladder | Inconclusive: harness stopped before model load on a corrected version-string gate |
-| 64K context | Memory projected; live stage not executed |
-| 256K context | Memory projected; live stage not executed |
+| 64K context | Live production-topology pass at 65,532 actual input tokens |
+| 256K context | 240K target passes at 239,997 actual input tokens; literal 256K remains unmeasured |
 | Comparative task-quality evaluation | Not started |
-| Production performance and broader serving validation | Not started |
+| Production performance and broader serving validation | Single-request stage latency measured; concurrency, batching, sustained load, and broader modalities remain untested |
 
 ## Remaining work and limitations
 
-Gate D has no remaining blocker. Gate E's bounded 2K model/transport acceptance
-now passes on the exact EOS-hotfix image, including strict JSON in both response
-modes. The staged context ladder remains unmeasured because its single
-authorized training attempt stopped before model load; any rerun requires a
-separate explicit authorization. The serving quota remains 4/4, exactly enough
-for one TP4 replica but not a reservation. The direct Vertex Invoke POST path
-is validated, but no warm replica or ordinary OpenAI GET/POST base URL is
-retained. A future consumer deployment still needs a separately approved edge
-that serves the profile-derived GET documents and preserves raw Responses
-POST/SSE bytes while wrapping only the authenticated v1beta1 Invoke transport.
-The validated image intentionally retains the embedded profile's
+Gate D has no remaining blocker. Gate E's model/transport acceptance and
+single-request context ladder now pass through a 240K target on the exact
+EOS-hotfix image and production topology. The serving quota remains 4/4,
+exactly enough for one TP4 replica but not a reservation. The direct Vertex
+Invoke POST path is validated, but no warm replica or ordinary OpenAI GET/POST
+base URL is retained. A future consumer deployment still needs a separately
+approved edge that serves the profile-derived GET documents and preserves raw
+Responses POST/SSE bytes while wrapping only the authenticated v1beta1 Invoke
+transport. The validated image intentionally retains the embedded profile's
 `candidate-unvalidated-api` metadata; changing that tracked contract would
 produce new runtime bits and therefore belongs to a later promotion build.
 
 Still untested: comparative quality, router stability, reasoning controls,
-tools, image, audio, long context, batching, prefix caching, CUDA graphs, MTP,
-LoRA, production serving headroom, and optimized performance. The four vLLM
+tools, image, audio, concurrent load, batching, prefix caching, CUDA graphs,
+MTP, LoRA, production serving headroom, and optimized performance. The four vLLM
 patches remain local and are not upstream.
 
 ## Local validation

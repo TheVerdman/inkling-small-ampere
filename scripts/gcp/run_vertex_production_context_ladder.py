@@ -46,6 +46,12 @@ ENDPOINT_INFERENCE_TIMEOUT_SECONDS = 3_600
 CONTROLLER_TIMEOUT_SECONDS = 10_200
 NODE_RATE_USD_PER_HOUR = 23.1273896
 REPO_ROOT = Path(__file__).resolve().parents[2]
+MONITORING_METRICS = (
+    "aiplatform.googleapis.com/prediction/online/accelerator/memory/bytes_used",
+    "aiplatform.googleapis.com/prediction/online/accelerator/duty_cycle",
+    "aiplatform.googleapis.com/prediction/online/prediction_latencies",
+    "aiplatform.googleapis.com/prediction/online/response_count",
+)
 
 
 class ControllerError(RuntimeError):
@@ -483,23 +489,17 @@ def _collect_metrics(
     end_time: str,
     wait_seconds: int = 420,
 ) -> dict[str, Any]:
-    metrics = (
-        "ml.googleapis.com/prediction/online/accelerator/memory/bytes_used",
-        "ml.googleapis.com/prediction/online/accelerator/duty_cycle",
-        "ml.googleapis.com/prediction/latencies",
-        "ml.googleapis.com/prediction/response_count",
-    )
     deadline = time.monotonic() + wait_seconds
     collected: dict[str, Any] = {}
     while True:
-        for metric in metrics:
+        for metric in MONITORING_METRICS:
             try:
                 collected[metric] = client.request(
                     "GET", _monitoring_query_url(metric, start_time, end_time), timeout=120
                 )
             except ControllerError as exc:
                 collected[metric] = {"collection_error": str(exc)}
-        memory = collected[metrics[0]]
+        memory = collected[MONITORING_METRICS[0]]
         series = memory.get("timeSeries") if isinstance(memory, dict) else None
         if isinstance(series, list) and series:
             break

@@ -1,0 +1,263 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "inkling-gate-e-production-context-validation-record",
+  "recorded_at": "2026-08-10T05:52:40Z",
+  "result": "pass-through-240k-and-fully-torn-down",
+  "source": {
+    "branch": "codex/vertex-production-context-ladder",
+    "initial_controller_commit": "ed03cd36e8e766f650a59d4ce5700c9d7c844c35",
+    "successful_controller_commit": "77bc532899bfb310bd7324c923eb6b7cd1847721",
+    "hotfix_source_commit": "aa2e7dd0f8f5fd1be0e4449f802ae5b72ffc534a",
+    "image_uri": "us-central1-docker.pkg.dev/project-49b1b523-d248-434f-bd4/inkling-serving/inkling-small-ampere@sha256:5cd713ab404a051892e98f624858f2550e50781489fa916d47f971974c310575",
+    "profile": "configs/serving/responses-256k-candidate-v1.json",
+    "profile_sha256": "a8775671b01904501ce20cb167009e83400eaa15cbe007aa12e30510122ce718",
+    "suite": "configs/evaluation/gate-e-long-context-production-v1.json",
+    "suite_sha256": "534d99665977f7ba7f312c87324fd15493fd3756bd0b69c7a3b6302902d7b069"
+  },
+  "topology": {
+    "project": "project-49b1b523-d248-434f-bd4",
+    "project_number": "232930557062",
+    "region": "us-central1",
+    "endpoint": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e",
+    "dedicated_endpoint_dns": "https://inkling-small-responses-gate-e.us-central1-232930557062.prediction.vertexai.goog",
+    "endpoint_inference_timeout_seconds": 3600,
+    "temporary_model_id": "inkling-small-w8a16-gate-e-v8",
+    "machine_type": "a2-ultragpu-4g",
+    "accelerator_type": "NVIDIA_A100_80GB",
+    "accelerator_count": 4,
+    "min_replica_count": 1,
+    "max_replica_count": 1,
+    "serving_quota_effective_limit": 4,
+    "automatic_mutation_retries": 0,
+    "automatic_inference_request_retries": 0
+  },
+  "initial_harness_attempt": {
+    "status": "fail-and-fully-torn-down",
+    "started_at": "2026-08-10T03:39:04.221220+00:00",
+    "completed_at": "2026-08-10T04:40:36.139937+00:00",
+    "output_directory": "results/raw/vertex-production-context-20260810-033901Z",
+    "model_upload_operation": "projects/232930557062/locations/us-central1/models/inkling-small-w8a16-gate-e-v8/operations/6024064886772858880",
+    "deploy_operation": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e/operations/6942799210756440064",
+    "deployed_model_id": "4748778075980824576",
+    "deploy_submission_count": 1,
+    "failure_type": "ModuleNotFoundError",
+    "failure": "child probe could not import the repository scripts namespace after the controller replaced PYTHONPATH with src",
+    "inference_requests_reaching_endpoint": 0,
+    "inference_oauth_tokens_minted": 0,
+    "long_context_report_created": false,
+    "fix": {
+      "commit": "77bc532899bfb310bd7324c923eb6b7cd1847721",
+      "absolute_repository_paths": true,
+      "repository_and_src_python_paths_preserved": true,
+      "exact_child_process_help_test": "pass",
+      "deliberate_pre_network_boundary_test": "pass",
+      "full_test_count": 121
+    },
+    "cleanup": {
+      "undeploy_operation": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e/operations/1597343112416460800",
+      "model_delete_operation": "projects/232930557062/locations/us-central1/models/inkling-small-w8a16-gate-e-v8/operations/1600157862183567360",
+      "completed_at": "2026-08-10T04:33:34.763076+00:00",
+      "endpoint_empty": true,
+      "temporary_model_absent": true
+    },
+    "cost_arithmetic": {
+      "observed_node_rate_usd_per_hour": 23.1273896,
+      "deploy_to_cleanup_seconds": 3126.26819,
+      "full_rate_arithmetic_usd": 20.084006228949118,
+      "actual_billing_status": "not-yet-verifiable"
+    },
+    "artifacts": {
+      "controller_state": {
+        "path": "results/raw/vertex-production-context-20260810-033901Z/controller-state.json",
+        "sha256": "d24159754af4b83bf8f0b87f98a270950860e86280e0be6767ca819d72ee4783"
+      },
+      "probe_log": {
+        "path": "results/raw/vertex-production-context-20260810-033901Z/probe-controller.log",
+        "sha256": "021b15bd268c61b7c52be099197b6f19bbba6784a3feb024f7505a3f521f8b1c"
+      }
+    }
+  },
+  "successful_attempt": {
+    "status": "pass-and-fully-torn-down",
+    "started_at": "2026-08-10T04:41:06.693030+00:00",
+    "completed_at": "2026-08-10T05:46:31.282134+00:00",
+    "output_directory": "results/raw/vertex-production-context-20260810-044102Z",
+    "model_upload_operation": "projects/232930557062/locations/us-central1/models/inkling-small-w8a16-gate-e-v8/operations/5103395422324391936",
+    "deploy_operation": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e/operations/8977898476746571776",
+    "deployed_model_id": "6772020208577019904",
+    "deploy_submission_count": 1,
+    "deploy_submitted_at": "2026-08-10T04:42:43.768257+00:00",
+    "deploy_terminal_at": "2026-08-10T05:34:50.058697+00:00",
+    "probe": {
+      "status": "pass",
+      "maximum_verified_target_input_tokens": 240000,
+      "maximum_verified_actual_input_tokens": 239997,
+      "total_controller_seconds": 273.0692380829714,
+      "independent_oauth_tokens_minted": 24,
+      "request_retry_count": 0,
+      "stages": [
+        {
+          "id": "2k",
+          "target_input_tokens": 2048,
+          "actual_input_tokens": 2043,
+          "response_id": "resp_884e462423dbd6a8",
+          "exact_retrieval": true,
+          "terminal_response_completed_count": 1,
+          "first_output_seconds": 13.995269584003836,
+          "stage_seconds": 21.73360325023532,
+          "request_bytes": 12798
+        },
+        {
+          "id": "8k",
+          "target_input_tokens": 8192,
+          "actual_input_tokens": 8199,
+          "response_id": "resp_81931583e9c84150",
+          "exact_retrieval": true,
+          "terminal_response_completed_count": 1,
+          "first_output_seconds": 6.9732940825633705,
+          "stage_seconds": 15.045789500232786,
+          "request_bytes": 50302
+        },
+        {
+          "id": "32k",
+          "target_input_tokens": 32768,
+          "actual_input_tokens": 32769,
+          "response_id": "resp_a922332fc1257eea",
+          "exact_retrieval": true,
+          "terminal_response_completed_count": 1,
+          "first_output_seconds": 12.410234790761024,
+          "stage_seconds": 20.660226208157837,
+          "request_bytes": 200064
+        },
+        {
+          "id": "64k",
+          "target_input_tokens": 65536,
+          "actual_input_tokens": 65532,
+          "response_id": "resp_87bab21c8810e767",
+          "exact_retrieval": true,
+          "terminal_response_completed_count": 1,
+          "first_output_seconds": 24.33035587472841,
+          "stage_seconds": 33.313039334025234,
+          "request_bytes": 399744
+        },
+        {
+          "id": "128k",
+          "target_input_tokens": 131072,
+          "actual_input_tokens": 131070,
+          "response_id": "resp_9bf29df0ffb07bc1",
+          "exact_retrieval": true,
+          "terminal_response_completed_count": 1,
+          "first_output_seconds": 50.94057183293626,
+          "stage_seconds": 59.854157167021185,
+          "request_bytes": 799234
+        },
+        {
+          "id": "240k",
+          "target_input_tokens": 240000,
+          "actual_input_tokens": 239997,
+          "response_id": "resp_b5510bbf00244aae",
+          "exact_retrieval": true,
+          "terminal_response_completed_count": 1,
+          "first_output_seconds": 112.67109987465665,
+          "stage_seconds": 122.44272975018248,
+          "request_bytes": 1463170
+        }
+      ]
+    },
+    "cleanup": {
+      "undeploy_operation": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e/operations/151916330449108992",
+      "model_delete_operation": "projects/232930557062/locations/us-central1/models/inkling-small-w8a16-gate-e-v8/operations/3778439930389200896",
+      "completed_at": "2026-08-10T05:39:28.869435+00:00",
+      "endpoint_empty": true,
+      "temporary_model_absent": true,
+      "independently_verified": true,
+      "independently_verified_at": "2026-08-10T05:52:40Z",
+      "active_custom_job_count": 0,
+      "persistent_resource_count": 0,
+      "zero_active_gpu_compute": true
+    },
+    "cost_arithmetic": {
+      "observed_node_rate_usd_per_hour": 23.1273896,
+      "deploy_to_cleanup_seconds": 3405.101178,
+      "full_rate_arithmetic_usd": 21.875305991951375,
+      "actual_billing_status": "not-yet-verifiable"
+    },
+    "telemetry": {
+      "prediction_container_log_entries": 330,
+      "semantic_fatal_or_runtime_error_entries": 0,
+      "legacy_controller_query": {
+        "status": "no-series-because-wrong-metric-namespace",
+        "namespace": "ml.googleapis.com",
+        "artifact_path": "results/raw/vertex-production-context-20260810-044102Z/vertex-monitoring-metrics.json"
+      },
+      "corrected_vertex_ai_query": {
+        "namespace": "aiplatform.googleapis.com",
+        "artifact_path": "results/raw/vertex-production-context-20260810-044102Z/corrected-monitoring/vertex-monitoring-metrics.json",
+        "accelerator_memory_series": 1,
+        "accelerator_memory_points": 43,
+        "maximum_accelerator_memory_bytes_used": 85890039808,
+        "maximum_accelerator_memory_gib": 79.9913330078125,
+        "accelerator_duty_cycle_series": 1,
+        "accelerator_duty_cycle_points": 43,
+        "maximum_accelerator_duty_cycle": 0.9500000000000001,
+        "http_200_response_series": 1,
+        "http_200_response_points": 5,
+        "http_200_response_count": 24,
+        "prediction_latency_series": 0,
+        "latency_source_of_record": "probe per-request SSE timings"
+      }
+    },
+    "artifacts": {
+      "controller_state": {
+        "path": "results/raw/vertex-production-context-20260810-044102Z/controller-state.json",
+        "bytes": 10616,
+        "sha256": "b040ed212704ec7b4f83fe13ce03cc95a3e7b5f1995797bac3bc8a93bda76d05"
+      },
+      "long_context_validation": {
+        "path": "results/raw/vertex-production-context-20260810-044102Z/long-context-validation.json",
+        "bytes": 56186,
+        "sha256": "c15102063971a5e0b13ab9e9b573ddfb731fcdcb6776c76a81949833c424b693"
+      },
+      "probe_log": {
+        "path": "results/raw/vertex-production-context-20260810-044102Z/probe-controller.log",
+        "bytes": 57508,
+        "sha256": "2f8fa6b61747daa5f663b734827f179179c9a2aa9aa7977884e27ffefb445300"
+      },
+      "prediction_container_logs": {
+        "path": "results/raw/vertex-production-context-20260810-044102Z/prediction-container-logs.json",
+        "bytes": 296323,
+        "sha256": "d99cdea5340bd15a34ad415e7df0f2e9dc509cad7b1c6abf03bbc3c0e3f27c3c"
+      },
+      "legacy_monitoring_query": {
+        "path": "results/raw/vertex-production-context-20260810-044102Z/vertex-monitoring-metrics.json",
+        "bytes": 330,
+        "sha256": "a31298df2f84e9f7994c8a669e9cc365c74e6f54a33a7619c7e2f23e171ccf54"
+      },
+      "corrected_monitoring_query": {
+        "path": "results/raw/vertex-production-context-20260810-044102Z/corrected-monitoring/vertex-monitoring-metrics.json",
+        "bytes": 24252,
+        "sha256": "47b1d2dae11c8e1f3f4b7f1e9b9e738cf057b7e252ae76cd0ea562c8126d5eee"
+      }
+    }
+  },
+  "combined_cost_arithmetic": {
+    "full_rate_arithmetic_usd": 41.95931222090049,
+    "actual_billing_status": "not-yet-verifiable",
+    "additional_storage_logging_and_network_charges_excluded": true
+  },
+  "promotion_scope": {
+    "promoted": [
+      "single-request production topology through a 240000-token target",
+      "strict-schema streaming exact early-middle-late retrieval",
+      "direct dedicated-Endpoint Invoke transport",
+      "zero automatic request retries"
+    ],
+    "not_promoted": [
+      "literal 262144-token input",
+      "batching or concurrent requests",
+      "sustained load or availability",
+      "comparative task quality",
+      "continuously warm consumer edge"
+    ]
+  }
+}

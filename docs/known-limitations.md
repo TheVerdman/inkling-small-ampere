@@ -29,21 +29,25 @@ As of the final bounded Gate E hotfix acceptance on 2026-08-10:
 - Nsight Systems and Nsight Compute are absent from the pinned serving image.
   Current kernel evidence comes from Torch profiler events; standalone Nsight
   traces remain a release follow-up.
-- Image, audio, Responses tools/reasoning events, longer-context practicality,
-  batching, prefix caching, CUDA graphs, MTP, and LoRA remain untested on the
+- Image, audio, Responses tools/reasoning events, batching, concurrent-request
+  behavior, prefix caching, CUDA graphs, MTP, and LoRA remain untested on the
   complete checkpoint.
-- The exact 2K EOS-hotfix image passed live direct-Vertex Responses strict JSON
-  in non-streaming and SSE modes plus ordinary SSE. No continuously warm
-  consumer endpoint is retained, and the 64K and 256K profiles remain memory
-  projections rather than validated context-window claims.
+- The exact EOS-hotfix image passed live direct-Vertex Responses strict JSON in
+  non-streaming and SSE modes plus ordinary SSE. The same image then passed
+  exact strict-schema opening/middle/closing retrieval at 2K, 8K, 32K, 64K,
+  128K, and a 240K target on one production-shaped TP4 replica. The maximum
+  measured input was 239,997 actual tokens; the 262,144-token configuration is
+  still a ceiling, not a validated 256K request or a concurrency claim. No
+  continuously warm consumer endpoint is retained.
 - vLLM response storage is deliberately disabled; clients must send explicit
   history. `previous_response_id` is not a durable or replica-safe contract.
 - Vertex custom-model A100 80GB serving quota is verified at exactly 4/4 in
   `us-central1`, enough for one warm TP4 replica and no second replica. Quota is
-  not a capacity reservation. One dedicated Endpoint exists empty; temporary
-  hotfix Model v7 is deleted, and no deployed replica, active CustomJob, or
-  persistent resource remains. The bounded live-run authorization is consumed;
-  quota alone does not authorize another deployment.
+  not a capacity reservation. One dedicated Endpoint exists empty with a
+  3,600-second inference timeout; temporary hotfix Models v7 and v8 are
+  deleted, and no deployed replica, active CustomJob, or persistent resource
+  remains. The bounded live-run authorization is consumed; quota alone does not
+  authorize another deployment.
 - Artifact Registry retains the validated hotfix serving digest plus historical
   serving, edge, and storage-probe images. Those bytes and the checkpoint can
   still incur storage charges even though no GPU compute is active. Cloud Build

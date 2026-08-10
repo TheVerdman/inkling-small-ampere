@@ -5,19 +5,25 @@ Inkling-Small on one GCP `a2-ultragpu-4g` node. The first target is reproducible
 W8A16 inference across four A100 80GB GPUs; W8A8 is deferred until W8A16 is
 correct.
 
-Current result: **Gates C and D pass.** The balanced TP4 W8A16 checkpoint is
-converted and checksum-verified. Two sequential fresh processes loaded it on
-four A100 80GB GPUs with the intended Marlin kernels, produced finite coherent
-32-token completions, and independently matched all ten fixed smoke prompts.
-See [STATUS.md](STATUS.md) for the exact evidence and scope.
+Current result: **Gates C and D pass, and Gate E's direct-Vertex serving and
+production-topology context ladder pass.** The balanced TP4 W8A16 checkpoint
+is converted and checksum-verified. Two sequential fresh processes loaded it
+on four A100 80GB GPUs with the intended Marlin kernels, produced finite
+coherent 32-token completions, and independently matched all ten fixed smoke
+prompts. The exact hotfix image also passed live strict-JSON Responses and the
+2K, 8K, 32K, 64K, 128K, and 240K retrieval ladder on one production-shaped
+Vertex replica. See [STATUS.md](STATUS.md) for the exact evidence and scope.
 
-Gate E preparation now provides a fail-closed, **Responses-only** serving
-contract with 2K bring-up, 64K fallback, and 256K target profiles. Serving
-quota is verified at exactly four custom-model A100 80GB GPUs, the immutable
-serving and edge images are published, and one dedicated Endpoint is retained
-empty. No production Model or GPU deployment exists. The 253 GiB checkpoint's
-A2 prediction restore path must still be verified before the warm service can
-be deployed. See the [Gate E operationalization plan](docs/gate-e-operationalization.md).
+Gate E now provides a fail-closed, **Responses-only** serving contract with 2K
+bring-up, 64K fallback, and 256K-configured candidate profiles. Serving quota
+is verified at exactly four custom-model A100 80GB GPUs. The immutable
+EOS-hotfix image restored the 253 GiB checkpoint on the A2 prediction root
+overlay, served strict JSON, and passed exact early/middle/late retrieval at a
+maximum measured 240,000-token target (239,997 actual input tokens). The
+temporary Model and replica were removed immediately; one dedicated Endpoint
+is retained empty with a 3,600-second inference timeout. A continuously warm
+consumer edge remains separate work. See the [Gate E operationalization
+record](docs/gate-e-operationalization.md).
 
 - Exact source: `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`
 - Exact source payload: 265,956,439,090 elements and 495.382 GiB of tensor data

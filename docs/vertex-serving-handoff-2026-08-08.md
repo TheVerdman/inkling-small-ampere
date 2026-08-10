@@ -372,6 +372,19 @@ Prefer using the intended warm endpoint for the corrected context ladder rather
 than launching another training job, unless the user explicitly chooses a
 separate training validation.
 
+## Superseding production-topology context result
+
+The warm-endpoint path has now been executed and supersedes the unmeasured
+context blocker below. Commit `77bc532899bfb310bd7324c923eb6b7cd1847721`
+used the exact validated hotfix image on one no-retry `a2-ultragpu-4g`
+prediction replica. Strict-schema streaming retrieval passed at 2K, 8K, 32K,
+64K, 128K, and 240K targets; the final stage used 239,997 actual input tokens,
+returned exact opening/middle/closing values, reached first output in 112.67
+seconds, and completed in 122.44 seconds. No request was retried. The replica
+was undeployed and temporary Model v8 deleted immediately, and independent
+inventory confirmed the retained dedicated Endpoint empty. Exact evidence is
+in `manifests/gate-e-production-context-validation-20260810.json`.
+
 ## Remaining deployment blockers
 
 Quota is no longer a blocker. These items remain:
@@ -393,9 +406,9 @@ Quota is no longer a blocker. These items remain:
 4. **External Responses edge.** Authentication and raw SSE/GET/POST forwarding
    are implemented locally but still require exact identity/secret resources,
    deployment approval, and live validation.
-5. **Measured context.** Only the 2K model/runtime shape is verified. The input
-   ladder through 240K remains unmeasured until live retrieval/latency tests
-   pass.
+5. **Measured context follow-ups.** The single-request production-topology
+   ladder now passes through a 240K target. Concurrency, batching, sustained
+   load, task quality, and a literal 256K input remain unmeasured.
 
 ## Recommended next-agent sequence
 
