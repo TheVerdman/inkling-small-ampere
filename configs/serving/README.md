@@ -49,6 +49,12 @@ approval. A training pass establishes model/runtime/Responses context evidence;
 it does not establish Vertex Endpoint routing, production storage staging, or
 warm-service availability.
 
+`configs/evaluation/gate-e-long-context-production-v1.json` retains the same
+staged retrieval contract for production topology while capping the 240K stage
+at Vertex's one-hour dedicated-Endpoint limit. Its controller deploys this 256K
+profile by overriding the validated image's default Docker `CMD`; it does not
+rebuild or republish the image.
+
 `vertex-gate-e-plan-v1.json` records the intended cloud shape and historical
 publication/probe state; its executable-authorization fields remain a
 fail-closed planning record rather than a description of the later manual

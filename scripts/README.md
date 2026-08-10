@@ -92,6 +92,17 @@ checkpoint once and launches the model once. Its 10,800-second timeout is only
 a hard execution ceiling; the controller reserves the final 600 seconds for
 shutdown and evidence upload.
 
+`gpu/remote_long_context_responses_probe.py` runs the corresponding production
+suite through the dedicated Vertex Invoke path. It mints a fresh OAuth token
+before each independent request, applies the same strict-schema adapter as the
+consumer edge, enforces Vertex's 10-MiB request limit, and rejects any stage
+timeout above one hour. `gcp/run_vertex_production_context_ladder.py` defaults
+to a non-mutating dry run; its explicit execution mode updates the retained
+Endpoint to a 3,600-second inference timeout, uploads one temporary 256K Model,
+deploys exactly one TP4 replica, runs the stop-on-first-failure ladder, then
+undeploys and deletes only that temporary Model before collecting delayed
+platform metrics and container logs.
+
 `gcp/submit_vertex_recon.sh` submits one bounded four-A100 Vertex job using the
 exact pinned vLLM image. It captures hardware and NCCL facts and runs no-weight
 W8A16 and Inkling relative-attention probes. The job uploads one JSON artifact

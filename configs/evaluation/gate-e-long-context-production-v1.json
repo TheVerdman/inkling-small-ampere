@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "inkling-responses-long-context-suite",
+  "suite_id": "gate-e-long-context-production-v1",
+  "seed": 20260802,
+  "profile_id": "responses-256k-candidate-v1",
+  "served_model_name": "w8a16-balanced-v1",
+  "overall_execution_ceiling_seconds": 10800,
+  "artifact_upload_reserve_seconds": 600,
+  "server_startup_timeout_seconds": 1800,
+  "readiness_poll_seconds": 5,
+  "max_output_tokens": 96,
+  "token_calibration_tolerance": 64,
+  "actual_input_token_tolerance_below": 256,
+  "actual_input_token_tolerance_above": 2048,
+  "stages": [
+    {
+      "id": "2k",
+      "target_input_tokens": 2048,
+      "timeout_seconds": 300
+    },
+    {
+      "id": "8k",
+      "target_input_tokens": 8192,
+      "timeout_seconds": 480
+    },
+    {
+      "id": "32k",
+      "target_input_tokens": 32768,
+      "timeout_seconds": 900
+    },
+    {
+      "id": "64k",
+      "target_input_tokens": 65536,
+      "timeout_seconds": 1500
+    },
+    {
+      "id": "128k",
+      "target_input_tokens": 131072,
+      "timeout_seconds": 2700
+    },
+    {
+      "id": "240k",
+      "target_input_tokens": 240000,
+      "timeout_seconds": 3600
+    }
+  ]
+}

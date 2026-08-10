@@ -19,7 +19,7 @@ import traceback
 import urllib.error
 import urllib.request
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,6 +65,10 @@ class ProbeTimeoutError(ProbeError):
     """Raised when one bounded operation exhausts its wall-clock allowance."""
 
 
+BearerTokenProvider = Callable[[], str | None]
+RequestBodyAdapter = Callable[[str, bytes], bytes]
+
+
 @contextmanager
 def _wall_timeout(seconds: float, label: str) -> Iterator[None]:
     if seconds <= 0:
@@ -96,8 +100,13 @@ def _url(base_url: str, route: str) -> str:
     return f"{base_url.rstrip('/')}/{route.lstrip('/')}"
 
 
-def _headers() -> dict[str, str]:
-    return {"Accept": "text/event-stream", "Content-Type": "application/json"}
+def _headers(token_provider: BearerTokenProvider | None) -> dict[str, str]:
+    headers = {"Accept": "text/event-stream", "Content-Type": "application/json"}
+    if token_provider is not None:
+        token = token_provider()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 def _http_error(exc: urllib.error.HTTPError) -> ProbeError:
@@ -127,12 +136,15 @@ def _post_timed_sse(
     route: str,
     body: dict[str, Any],
     timeout: float,
+    token_provider: BearerTokenProvider | None = None,
+    body_adapter: RequestBodyAdapter | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    encoded = json.dumps(body, separators=(",", ":")).encode("utf-8")
+    public_body = json.dumps(body, separators=(",", ":")).encode("utf-8")
+    encoded = body_adapter(route, public_body) if body_adapter is not None else public_body
     request = urllib.request.Request(
         _url(base_url, route),
         data=encoded,
-        headers=_headers(),
+        headers=_headers(token_provider),
         method="POST",
     )
     events: list[dict[str, Any]] = []
@@ -198,6 +210,9 @@ def _post_timed_sse(
     )
     return events, {
         "request_bytes": len(encoded),
+        "public_request_bytes": len(public_body),
+        "request_sha256": hashlib.sha256(encoded).hexdigest(),
+        "public_request_sha256": hashlib.sha256(public_body).hexdigest(),
         "response_headers_seconds": headers_seconds,
         "first_byte_seconds": first_byte_seconds,
         "first_event_seconds": first_event_seconds,
@@ -209,7 +224,14 @@ def _post_timed_sse(
     }
 
 
-def _chat_token_count(*, base_url: str, model: str, prompt: str, timeout: float) -> int:
+def _chat_token_count(
+    *,
+    base_url: str,
+    model: str,
+    prompt: str,
+    timeout: float,
+    token_provider: BearerTokenProvider | None = None,
+) -> int:
     response = post_json(
         base_url,
         "/tokenize",
@@ -221,7 +243,7 @@ def _chat_token_count(*, base_url: str, model: str, prompt: str, timeout: float)
             "return_token_strs": False,
             "chat_template_kwargs": {"reasoning_effort": "none"},
         },
-        api_key=None,
+        api_key=token_provider() if token_provider is not None else None,
         timeout=timeout,
     )
     count = response.get("count")
@@ -239,6 +261,7 @@ def _calibrate_prompt(
     suite: LongContextSuite,
     stage: LongContextStage,
     request_timeout: float,
+    token_provider: BearerTokenProvider | None = None,
 ) -> tuple[str, dict[str, Any]]:
     started = time.perf_counter()
     attempts: list[dict[str, int]] = []
@@ -254,6 +277,7 @@ def _calibrate_prompt(
             model=suite.served_model_name,
             prompt=prompt,
             timeout=request_timeout,
+            token_provider=token_provider,
         )
         attempts.append({"filler_repetitions": repetitions, "chat_tokens": count})
         return prompt, count
@@ -354,6 +378,8 @@ def _run_stage(
     profile: ServingProfile,
     stage: LongContextStage,
     timeout_seconds: float,
+    token_provider: BearerTokenProvider | None = None,
+    body_adapter: RequestBodyAdapter | None = None,
 ) -> dict[str, Any]:
     stage_started = time.perf_counter()
     with _wall_timeout(timeout_seconds, f"stage {stage.stage_id}"):
@@ -362,6 +388,7 @@ def _run_stage(
             suite=suite,
             stage=stage,
             request_timeout=timeout_seconds,
+            token_provider=token_provider,
         )
         request = _needle_request(
             model=suite.served_model_name,
@@ -374,6 +401,8 @@ def _run_stage(
             route="/v1/responses",
             body=request,
             timeout=timeout_seconds,
+            token_provider=token_provider,
+            body_adapter=body_adapter,
         )
         completed = completed_response_from_events(events)
         failures = validate_completed_response(
