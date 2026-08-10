@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 from scripts.gcp.run_vertex_production_context_ladder import (
     ENDPOINT_INFERENCE_TIMEOUT_SECONDS,
     IMAGE_URI,
     MODEL_ID,
+    REPO_ROOT,
     _deploy_body,
     _dry_run_plan,
     _endpoint_update_body,
     _model_upload_body,
+    _probe_environment,
 )
 
 
@@ -58,3 +63,22 @@ def test_controller_defaults_to_a_nonmutating_complete_plan() -> None:
     assert plan["stop_on_first_probe_failure"] is True
     assert plan["probe"]["endpoint_inference_timeout_seconds"] == 3_600
     assert [step["method"] for step in plan["teardown"]] == ["POST", "DELETE"]
+
+
+def test_controller_child_probe_imports_with_exact_launch_environment() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/gpu/remote_long_context_responses_probe.py"),
+            "--help",
+        ],
+        cwd=REPO_ROOT,
+        env=_probe_environment(),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Run the reviewed context ladder" in completed.stdout

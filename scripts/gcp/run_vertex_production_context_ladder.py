@@ -45,6 +45,7 @@ SUITE_PATH = "configs/evaluation/gate-e-long-context-production-v1.json"
 ENDPOINT_INFERENCE_TIMEOUT_SECONDS = 3_600
 CONTROLLER_TIMEOUT_SECONDS = 10_200
 NODE_RATE_USD_PER_HOUR = 23.1273896
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class ControllerError(RuntimeError):
@@ -374,28 +375,36 @@ def _find_deployed_model(endpoint: dict[str, Any]) -> dict[str, Any] | None:
     return matches[0] if matches else None
 
 
+def _probe_environment() -> dict[str, str]:
+    environment = dict(os.environ)
+    python_paths = [str(REPO_ROOT), str(REPO_ROOT / "src")]
+    inherited_python_path = environment.get("PYTHONPATH")
+    if inherited_python_path:
+        python_paths.append(inherited_python_path)
+    environment["PYTHONPATH"] = os.pathsep.join(python_paths)
+    return environment
+
+
 def _run_probe(output_dir: Path) -> tuple[int, list[str]]:
     report_path = output_dir / "long-context-validation.json"
     command = [
         sys.executable,
-        "scripts/gpu/remote_long_context_responses_probe.py",
+        str(REPO_ROOT / "scripts/gpu/remote_long_context_responses_probe.py"),
         "--dedicated-endpoint-dns",
         DEDICATED_ENDPOINT_DNS,
         "--endpoint-resource",
         ENDPOINT_RESOURCE,
         "--profile",
-        PROFILE_PATH,
+        str(REPO_ROOT / PROFILE_PATH),
         "--suite",
-        SUITE_PATH,
+        str(REPO_ROOT / SUITE_PATH),
         "--output",
-        str(report_path),
+        str(report_path.resolve()),
         "--overall-timeout-seconds",
         str(CONTROLLER_TIMEOUT_SECONDS),
         "--endpoint-inference-timeout-seconds",
         str(ENDPOINT_INFERENCE_TIMEOUT_SECONDS),
     ]
-    environment = dict(os.environ)
-    environment["PYTHONPATH"] = "src"
     log_path = output_dir / "probe-controller.log"
     with log_path.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
@@ -403,7 +412,8 @@ def _run_probe(output_dir: Path) -> tuple[int, list[str]]:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env=environment,
+            cwd=REPO_ROOT,
+            env=_probe_environment(),
         )
         if process.stdout is None:
             raise AssertionError("probe stdout pipe is unavailable")
