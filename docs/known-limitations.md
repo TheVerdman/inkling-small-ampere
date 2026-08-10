@@ -1,6 +1,6 @@
 # Known limitations
 
-As of Gate E local operationalization on 2026-08-08:
+As of the final bounded Gate E hotfix acceptance on 2026-08-10:
 
 - Physical topology and driver details come from the preserved June 20 run
   because the pinned vLLM container lacks `nvidia-smi`; live GPU identity,
@@ -32,21 +32,22 @@ As of Gate E local operationalization on 2026-08-08:
 - Image, audio, Responses tools/reasoning events, longer-context practicality,
   batching, prefix caching, CUDA graphs, MTP, and LoRA remain untested on the
   complete checkpoint.
-- The Responses launcher, container, and validator pass locally, but no live
-  HTTP serving run has occurred. The 64K and 256K profiles are memory
-  projections, not validated context-window claims.
+- The exact 2K EOS-hotfix image passed live direct-Vertex Responses strict JSON
+  in non-streaming and SSE modes plus ordinary SSE. No continuously warm
+  consumer endpoint is retained, and the 64K and 256K profiles remain memory
+  projections rather than validated context-window claims.
 - vLLM response storage is deliberately disabled; clients must send explicit
   history. `previous_response_id` is not a durable or replica-safe contract.
 - Vertex custom-model A100 80GB serving quota is verified at exactly 4/4 in
   `us-central1`, enough for one warm TP4 replica and no second replica. Quota is
-  not a capacity reservation. One dedicated Endpoint exists empty; no Model,
-  deployed replica, or active CustomJob exists, and no production deployment
-  is authorized merely by quota approval.
-- Artifact Registry and the `inkling-serving` repository exist with two
-  historical serving/edge digests. They embed the rejected `/models` plan and
-  require corrected republication. Cloud Build and scanning remained
-  disabled. Cloud Run and Secret Manager are still disabled and no edge
-  service, identity, or secret exists.
+  not a capacity reservation. One dedicated Endpoint exists empty; temporary
+  hotfix Model v7 is deleted, and no deployed replica, active CustomJob, or
+  persistent resource remains. The bounded live-run authorization is consumed;
+  quota alone does not authorize another deployment.
+- Artifact Registry retains the validated hotfix serving digest plus historical
+  serving, edge, and storage-probe images. Those bytes and the checkpoint can
+  still incur storage charges even though no GPU compute is active. Cloud Build
+  and scanning remained disabled, and no Cloud Run edge service is retained.
 - Vertex documents 1,500 GiB local SSD on `a2-ultragpu-4g` but not the custom
   prediction container path that maps to it. The 253 GiB checkpoint restore
   path therefore had to pass fail-closed mount, filesystem-type, capacity,
@@ -82,10 +83,9 @@ As of Gate E local operationalization on 2026-08-08:
   evidence that promoted `/tmp/inkling-small-ampere` operationally despite the
   documentation gap.
 - Vertex Invoke forwards and streams arbitrary routes but is a Google POST RPC,
-  not a raw OpenAI GET/POST base URL. PADAWAN needs a thin authenticated edge
-  that serves the two GET documents and preserves Responses POST/SSE bytes.
-  Edge image, service account, endpoint-scoped least-privilege binding, and
-  pinned Secret Manager version remain unresolved and unprovisioned. The
-  planned Cloud Run service disables platform invoker IAM so an ordinary
-  OpenAI `Authorization: Bearer` header reaches the app, but the edge still
-  requires and constant-time checks that application bearer secret.
+  not a raw OpenAI GET/POST base URL. The direct POST JSON/SSE path passed live,
+  but PADAWAN still needs a separately approved thin authenticated edge that
+  serves the two GET documents and preserves Responses POST/SSE bytes. No edge
+  service is retained. Any future edge must keep platform invoker IAM from
+  consuming the ordinary OpenAI bearer header while enforcing its own
+  constant-time application-secret check.

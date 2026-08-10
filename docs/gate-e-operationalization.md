@@ -1,11 +1,48 @@
 # Gate E: Responses endpoint operationalization
 
-Status: **the authenticated edge is live and its static Responses-only contract
-passes; v1 failed closed on a tensor-byte accounting defect; corrected v2 then
-proved storage, restore, all 43 hashes, and TP4/NCCL initialization but failed
-before weight allocation because the serving image omitted pinned SciPy; the
-Endpoint is empty; a content-addressed dependency correction and one v3 rollout
-fit within the `$100` ceiling; live JSON/SSE validation remains pending**.
+Status: **the recovered model-config-EOS hotfix passed live strict JSON in both
+non-streaming and SSE modes on one four-A100 Vertex replica; ordinary SSE also
+passed; the replica and temporary Model were removed immediately, and the
+retained dedicated Endpoint is empty**.
+
+## Final EOS-hotfix acceptance
+
+Source commit `aa2e7dd0f8f5fd1be0e4449f802ae5b72ffc534a` was built once
+from Docker-context SHA-256
+`4c38c2033a73052a22f85057051920908d141e9e9d2894c10310170c79f6daef`.
+The locally verified `linux/amd64` image was pushed once as
+`inkling-small-ampere@sha256:5cd713ab404a051892e98f624858f2550e50781489fa916d47f971974c310575`.
+It embeds four verified runtime patches; patch 0004 passes Inkling's
+model-config EOS token `200006` into both the renderer and xgrammar instead of
+using auto-detected tokenizer token `199999`.
+
+Model upload operation `4541135962205323264` created temporary Model v7.
+DeployModel operation `5923741047808065536` requested exactly one
+`a2-ultragpu-4g` with four A100 80GB GPUs, min/max one, and no automatic retry.
+It reached `SUCCESSFULLY_DEPLOYED` at `2026-08-10T02:27:32.691238Z` with
+deployed-model ID `2460949465276612608`. Direct dedicated-Endpoint Invoke then
+passed the exact Responses `text.format` strict JSON Schema in non-streaming
+response `resp_b5456fe2c1787d0f` and across 23 SSE events in
+`resp_a2cf2c904e8115fb`; both returned exactly
+`{"ready": true, "check": 1}`. Plain streaming response
+`resp_842f386aaf282d18` returned `READY` across 10 events. Both streams ended
+with `response.completed` and complete usage.
+
+The monitoring process encountered an expired OAuth token during the long
+image pull. Fresh credentials reattached to the same non-cancellable LRO; no
+new DeployModel request or retry was sent. Undeploy operation
+`8388652603235368960` and Model-delete operation `3354191169788575744`
+completed immediately after acceptance. Independent inventory then confirmed
+the Endpoint empty, Model v7 absent, no active CustomJob, and no persistent
+resource. Full-rate deploy-to-cleanup arithmetic is `$21.380809946262694` for
+`3328.1281259059906` seconds at `$23.1273896/node-hour`; settled billing and
+ancillary charges remain unknown. The exact record is
+`manifests/gate-e-strict-json-live-validation-20260810.json`.
+
+The chronology below is retained as historical diagnosis. Statements about
+pending JSON/SSE validation or earlier image blockers are superseded by this
+section for the exact hotfix image; no continuously warm consumer endpoint or
+Cloud Run edge is retained.
 
 ## Live production rollout
 
@@ -148,7 +185,10 @@ is an HTTP body. The edge therefore serves the two GET documents from the
 pinned profile, wraps only the POST transport, and forwards the returned JSON
 or SSE bytes without translating the Responses protocol. It sends no automatic
 upstream retry, because replaying a generation request can duplicate work or
-events. This wire path remains live-unvalidated.
+events. The direct Invoke POST path is now live-validated for JSON and SSE on
+the exact hotfix image. A retained consumer edge serving the two ordinary GET
+routes and relaying this POST path is still absent and therefore remains
+unvalidated.
 
 The reviewed edge target is one Cloud Run service in `us-central1`, packaged
 by the separate pinned `Dockerfile.edge`. It scales from zero to at most one

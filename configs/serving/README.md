@@ -9,7 +9,11 @@ Profiles are intentionally staged:
 
 - `responses-2k-bringup-v1.json` reproduces the bounded Gate D memory shape and
   is the safest first server boot. The full checkpoint/runtime evidence is
-  verified at this length; the HTTP contract still needs a live Gate E run.
+  verified at this length, and the exact EOS-hotfix image passed live direct
+  Vertex strict JSON in both non-streaming and SSE modes plus ordinary SSE.
+  The embedded profile status remains candidate metadata until a later
+  promotion build, because changing it would produce runtime bits not covered
+  by that validation.
 - `responses-64k-candidate-v1.json` is the rollback profile for long-context
   bring-up. Its memory fit is projected, not measured.
 - `responses-256k-candidate-v1.json` is the operational target for PADAWAN and
@@ -33,7 +37,7 @@ INKLING_MODEL_PATH=/path/to/checkpoint \
   --dry-run
 ```
 
-An actual launch verifies the exact vLLM version, the three-patch marker baked
+An actual launch verifies the exact vLLM version, the four-patch marker baked
 by `Dockerfile.serving`, and required checkpoint metadata before executing
 `vllm serve`.
 
@@ -45,15 +49,17 @@ approval. A training pass establishes model/runtime/Responses context evidence;
 it does not establish Vertex Endpoint routing, production storage staging, or
 warm-service availability.
 
-`vertex-gate-e-plan-v1.json` records both the intended cloud shape and the
-completed publication/probe history. The serving quota is verified at exactly
-4/4, enough for one replica but not a capacity reservation. Artifact Registry
-and three historical immutable images exist; Cloud Run and Secret Manager remain
-disabled. The production and edge images embed the rejected `/models` plan and
-must be republished. Deployment is still blocked on verifying the root-overlay
-path uses a sufficiently large A2 Ultra filesystem for the 253 GiB restored
-checkpoint, resolving the non-cancellable DeployModel cost boundary, edge
-identity and secret resources, and explicit production/edge approval.
+`vertex-gate-e-plan-v1.json` records the intended cloud shape and historical
+publication/probe state; its executable-authorization fields remain a
+fail-closed planning record rather than a description of the later manual
+hotfix run. The serving quota is verified at exactly 4/4, enough for one
+replica but not a capacity reservation. Artifact Registry now retains the
+validated EOS-hotfix serving digest as well as historical images. The writable
+root-overlay restore path and exact 2K direct Invoke contract are live-proven,
+but no warm replica or Cloud Run edge is retained. A future consumer endpoint
+still needs new exact production/edge authorization, edge identity and secret
+resources, and a deployment cost boundary that does not assume LRO
+cancellation.
 The Responses endpoint needs a thin edge in front of Vertex Invoke so
 consumers receive an ordinary OpenAI GET/POST/SSE base URL; that edge is
 transport-only and does not add Chat Completions.

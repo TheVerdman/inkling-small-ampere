@@ -14,6 +14,37 @@ This repository owns checkpoint/runtime/serving work. PADAWAN work is occurring
 in another task, and Magellan will be updated in its own repository. Do not edit
 either consumer repository unless the user explicitly expands this task.
 
+## Final hotfix recovery update
+
+This handoff's earlier rollout chronology is superseded for strict-output
+acceptance by the bounded `2026-08-10` UTC run. The valuable hotfix branch was
+fast-forwarded into `main` at source commit
+`aa2e7dd0f8f5fd1be0e4449f802ae5b72ffc534a`; the other serving worktree remains
+retained separately. Its commit `4ec91c8` is patch-equivalent to main commit
+`1c2ccdb`, so no unique patch from that branch remains unintegrated. A
+complete-history Git bundle with both lines of work is stored outside the
+repository and verified by the record in
+`manifests/gate-e-strict-json-live-validation-20260810.json`.
+
+The exact merged Docker context
+`4c38c2033a73052a22f85057051920908d141e9e9d2894c10310170c79f6daef`
+was built and pushed once as serving digest
+`sha256:5cd713ab404a051892e98f624858f2550e50781489fa916d47f971974c310575`.
+One no-retry TP4 deployment, operation `5923741047808065536`, became ready on
+four A100 80GB GPUs. Strict JSON passed non-streaming and streaming with the
+exact object `{"ready": true, "check": 1}`, and ordinary streaming returned
+`READY`; both streams terminated with `response.completed`. No second deploy
+was submitted when the monitoring credential expired: fresh credentials
+reattached to the original non-cancellable LRO.
+
+Undeploy `8388652603235368960` and temporary-Model deletion
+`3354191169788575744` completed immediately. Independent final inventory found
+the retained Endpoint empty, Model v7 absent, no active CustomJob, and no
+persistent resource. Full-rate deploy-to-cleanup arithmetic is
+`$21.380809946262694`; actual billing remains unknown. There is no warm
+consumer endpoint after this validation, and long-context promotion remains
+separate work.
+
 ## Post-handoff execution update
 
 The user subsequently approved the exact image-publication identity and two
@@ -162,11 +193,13 @@ the conservative arithmetic above.
 
 ## Current repository state
 
-- Active worktree:
-  `/Users/andrewverdiramo/.codex/worktrees/43a5/inkling-small-ampere`
-- Handoff commit: `569c2fc2012dc36b4a33de89869af58c58a75e87`
-- Git state: detached at the handoff commit with the reviewed Gate E delta
-  intentionally uncommitted.
+- Active merged worktree:
+  `/Users/andrewverdiramo/Desktop/inkling-small-ampere` on `main`.
+- Final live-validated source commit:
+  `aa2e7dd0f8f5fd1be0e4449f802ae5b72ffc534a`.
+- The historical serving worktree remains separately retained at
+  `/Users/andrewverdiramo/.codex/worktrees/43a5/inkling-small-ampere` on commit
+  `4ec91c884b2f6e22d3341ef0642db087bf9953ff`.
 - The complete project record is in `STATUS.md`.
 - The original engineering/research plan is at
   `/Users/andrewverdiramo/.codex/attachments/3f5901fd-d030-47f3-b974-a17a9814224d/pasted-text.txt`.

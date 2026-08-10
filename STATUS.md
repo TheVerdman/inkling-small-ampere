@@ -1,50 +1,61 @@
 # Project status
 
-Last verified: 2026-08-09 18:47 EDT (2026-08-09 22:47 UTC)
+Last verified: 2026-08-09 22:31 EDT (2026-08-10 02:31 UTC)
 
 ## Executive state
 
-## Final teardown and strict-JSON correction
+## Recovered hotfix and live GPU validation
 
-The final bounded live run is over and all serving compute is torn down. A
-read-only audit at `2026-08-09T22:47:00Z` found no `deployedModels` on the
-dedicated Vertex Endpoint, no nonterminal Vertex CustomJobs, no Vertex
-persistent resources, and no Cloud Run service named
-`inkling-small-responses-edge`. Therefore zero GPU-backed Vertex replicas and
-zero active CustomJobs remain. The retained Endpoint object, Model metadata,
-container images, and checkpoint artifacts are non-running resources; their
-underlying Artifact Registry and Cloud Storage bytes may still incur storage
-charges.
+The valuable strict-JSON work is preserved and integrated. `main` and
+`codex/inkling-strict-json-hotfix` both contained source commit
+`aa2e7dd0f8f5fd1be0e4449f802ae5b72ffc534a` for the live run. The separate
+`codex/inkling-vertex-serving-deployment` worktree remains retained at
+`4ec91c884b2f6e22d3341ef0642db087bf9953ff`; `git cherry` marks that commit
+patch-equivalent to main's `1c2ccdbd956661b11ed4c433c44243c2d7d7fe6c`, so
+it has no unique patch left unintegrated. A verified complete-history Git bundle
+is stored at
+`/Users/andrewverdiramo/Desktop/inkling-small-ampere-hotfix-2026-08-09.bundle`
+with SHA-256
+`e5824f34cab9032a55829e1f5c020b50142447a64fb8fff7f4057269c6a55324`.
+The merged checkout was clean, `git fsck --full --strict` found no corruption,
+and `make check` passed Ruff formatting/lint, strict mypy, and all 113 tests.
 
-The final live acceptance result was mixed:
+The root cause of the earlier strict-output failure was the EOS mismatch
+described below: xgrammar auto-detected token `199999` (`<|endoftext|>`), while
+Inkling generation uses model-config token `200006`
+(`<|content_model_end_sampling|>`). Runtime patch
+`patches/vllm/0004-inkling-model-eos-structured-output.patch` makes the Inkling
+renderer and xgrammar compiler share the model-config EOS. Its live image was
+built once from Docker-context SHA-256
+`4c38c2033a73052a22f85057051920908d141e9e9d2894c10310170c79f6daef`,
+locally verified, and pushed once as
+`inkling-small-ampere@sha256:5cd713ab404a051892e98f624858f2550e50781489fa916d47f971974c310575`.
 
-- normal Responses passed (`resp_ba95c6c44e8cf4c7`, output `READY`);
-- streaming passed (`resp_840aaf3d58d3366e`, 10 events, terminal output
-  `READY`);
-- strict JSON failed with HTTP 500. Backend request
-  `resp_90941eee1428338f` ended when xgrammar rejected token `107036`.
+One no-retry `a2-ultragpu-4g` deployment used four A100 80GB GPUs, min/max one
+replica, temporary Model `inkling-small-w8a16-gate-e-v7`, and DeployModel
+operation `5923741047808065536`. It became `SUCCESSFULLY_DEPLOYED` at
+`2026-08-10T02:27:32.691238Z` with deployed-model ID
+`2460949465276612608`. The direct dedicated-Endpoint Invoke acceptance passed:
 
-Post-teardown analysis reproduced the strict failure with the exact retained
-Inkling tokenizer and the serving image's xgrammar `0.2.3`. The tokenizer does
-not declare a generic EOS token, so xgrammar auto-detected token `199999`
-(`<|endoftext|>`), while Inkling's model config and vLLM generation path use
-token `200006` (`<|content_model_end_sampling|>`). After valid JSON, xgrammar
-forced `199999`, marked its matcher terminated, and vLLM continued generation;
-the next arbitrary token was then reported as the rejection. This explains the
-changing rejected-token symptom and replaces the prior token-specific
-workaround with a termination-level fix.
+- strict JSON non-streaming returned exactly `{"ready": true, "check": 1}` in
+  `resp_b5456fe2c1787d0f`;
+- strict JSON streaming returned the same object across 23 events and ended in
+  `response.completed` in `resp_a2cf2c904e8115fb`;
+- ordinary streaming returned `READY` across 10 events and ended in
+  `response.completed` in `resp_842f386aaf282d18`.
 
-Runtime patch
-`patches/vllm/0004-inkling-model-eos-structured-output.patch` now makes the
-Inkling renderer and xgrammar compiler use the model-config EOS. It contains no
-rejected-token or begin-token trimming. Against the exact vLLM `0.26.0` source
-and tokenizer, both legal sequences (optional begin token plus JSON, and JSON
-without it) accept the complete strict object, accept model EOS `200006`, and
-terminate cleanly. Patch application, hash verification, Python compilation,
-formatting, lint, strict typing, and all 113 repository tests pass. The fix has
-not been rebuilt or live-deployed because the user-designated final GPU run had
-already ended; strict JSON therefore remains live-unvalidated, and the branch
-must not be represented as production-ready or merged wholesale on that basis.
+The monitoring controller's OAuth token expired during the unusually long
+container-image pull. Fresh credentials reattached to the same non-cancellable
+LRO; no second deployment or mutation retry was submitted, and the interruption
+did not affect serving or acceptance. Undeploy operation
+`8388652603235368960` and Model-delete operation `3354191169788575744`
+completed immediately after validation. An independent closing inventory found
+the Endpoint empty, Model v7 absent, no active CustomJob, and no persistent
+resource: zero GPU compute remains active. Deploy-to-cleanup full-rate
+arithmetic is `$21.380809946262694` for `3328.1281259059906` seconds at the
+observed `$23.1273896/node-hour`; actual billing and ancillary storage/logging
+charges remain unverified. Exact evidence is tracked in
+`manifests/gate-e-strict-json-live-validation-20260810.json`.
 
 ## Historical Gate E rollout update
 
@@ -611,7 +622,7 @@ All failed and cancelled runs remain part of the evidence record.
 | Fresh-process inference reproducibility on one worker | Pass |
 | Independent cloud-provisioning reproducibility | Not required; not demonstrated |
 | Responses-only serving profiles, launcher, image, and validator | Locally complete |
-| Consumer-facing warm endpoint | Storage resolved: v5 verified writable `/tmp/inkling-small-ampere` on the 1.583-TB root overlay and was cleanly torn down. Quota is 4/4 and the dedicated Endpoint is retained empty; corrected production/edge images, the production Model, warm TP4 deployment, and Responses edge remain. |
+| Consumer-facing warm endpoint | The exact 2K TP4 hotfix image passed direct Vertex Invoke strict JSON (non-streaming and streaming) plus ordinary SSE. The bounded replica and temporary Model were then removed; no continuously warm consumer endpoint is retained. |
 | Training-quota staged context ladder | Inconclusive: harness stopped before model load on a corrected version-string gate |
 | 64K context | Memory projected; live stage not executed |
 | 256K context | Memory projected; live stage not executed |
@@ -620,40 +631,38 @@ All failed and cancelled runs remain part of the evidence record.
 
 ## Remaining work and limitations
 
-Gate D has no remaining blocker. Gate E can proceed locally, but the staged
-context ladder remains unmeasured because the single authorized attempt stopped
-before model load. The blocking launcher defect is corrected locally; any cloud
-rerun requires separate explicit authorization. The serving quota is now
-verified at 4/4. V5 has proven the A2 custom-container root-overlay path safe
-for the 253-GiB restore contract; the probe Model and GPU were removed and the
-probe authorization is consumed. The historical production and edge digests
-still embed the pre-promotion plan and are stale. Corrected production-image
-republication, production Model upload, the continuously billed warm TP4
-deployment, and edge deployment remain separate exact approval boundaries.
-The stable edge must serve the profile-derived GET documents and preserve raw
-Responses POST/SSE bytes while wrapping only the authenticated v1beta1 Vertex
-Invoke transport; its live wire behavior remains unvalidated.
+Gate D has no remaining blocker. Gate E's bounded 2K model/transport acceptance
+now passes on the exact EOS-hotfix image, including strict JSON in both response
+modes. The staged context ladder remains unmeasured because its single
+authorized training attempt stopped before model load; any rerun requires a
+separate explicit authorization. The serving quota remains 4/4, exactly enough
+for one TP4 replica but not a reservation. The direct Vertex Invoke POST path
+is validated, but no warm replica or ordinary OpenAI GET/POST base URL is
+retained. A future consumer deployment still needs a separately approved edge
+that serves the profile-derived GET documents and preserves raw Responses
+POST/SSE bytes while wrapping only the authenticated v1beta1 Invoke transport.
+The validated image intentionally retains the embedded profile's
+`candidate-unvalidated-api` metadata; changing that tracked contract would
+produce new runtime bits and therefore belongs to a later promotion build.
 
 Still untested: comparative quality, router stability, reasoning controls,
 tools, image, audio, long context, batching, prefix caching, CUDA graphs, MTP,
-LoRA, production serving headroom, and optimized performance. The three vLLM
+LoRA, production serving headroom, and optimized performance. The four vLLM
 patches remain local and are not upstream.
 
 ## Local validation
 
-The revised Gate E root-overlay contract and complete local suite passed again
-after v5 promotion at `2026-08-09T02:49:26Z`:
+After recovering and fast-forwarding the hotfix into `main`, `make check`
+passed immediately before the live image build on `2026-08-09`:
 
 - Ruff formatting: 91 files formatted; Ruff lint passed.
 - Strict mypy: no issues in 58 source files.
-- Pytest: 105 passed, including targeted storage selection/write cleanup,
-  restore, cancellation, bootstrap,
-  immutable request-shape, image-tag rejection, edge authentication and byte
-  relay, and Responses-only drift cases.
+- Pytest: 113 passed, including the model-config EOS/xgrammar regression cases.
 - Bash syntax: all 13 repository shell scripts passed.
-- All 28 repository JSON documents parsed.
+- All tracked JSON documents parsed before the live run; the new evidence
+  manifest is rechecked by the closing suite.
 - All three serving profiles produced valid dry-run launch documents.
-- All three runtime patch hashes matched their pinned values.
+- All four runtime patch hashes matched their pinned values.
 - `make vertex-gate-e-dry-run` passed before v5 and emitted no executable
   mutation. The post-v5 renderer now treats the storage probe as completed and
   consumed, promotes `/tmp/inkling-small-ampere`, and retains only corrected
@@ -673,12 +682,13 @@ supported clean-checkout validation command is `make check`.
 
 ## Current cloud state
 
-The final Gate D job and the single authorized long-context job are terminal,
-and all evidence remains preserved. A `2026-08-09T02:40:03Z` read-only
-inventory found no active CustomJob; the temporary v5 Model returns 404, and
-the dedicated Gate E Endpoint exists with zero deployed models. The effective custom-model-
-serving A100 80GB quota is verified at 4/4. Artifact Registry contains exactly
-the four recorded immutable images: stale production serving, stale Responses
-edge, and the two historical storage-probe digests. Cloud Build, both scanning APIs, Cloud Run, and Secret Manager
-remain disabled. No production deployment is authorized or active, and this
-work does not assume banked usage or a billing reset.
+The final Gate D job and the authorized long-context attempt are terminal, and
+their evidence remains preserved. Independent checks after EOS-hotfix
+acceptance at `2026-08-10T02:31:00Z` found zero deployed models on the retained
+dedicated Endpoint, temporary Model `inkling-small-w8a16-gate-e-v7` absent,
+zero active CustomJobs, and zero persistent resources. Thus no Vertex GPU
+compute is active. The serving quota is verified at 4/4. Artifact Registry
+retains the validated hotfix image digest and historical images, while Cloud
+Storage retains the checkpoint; those bytes may incur storage charges despite
+zero active compute. No production retry is pending or authorized by this
+record, and actual billing remains unverified.

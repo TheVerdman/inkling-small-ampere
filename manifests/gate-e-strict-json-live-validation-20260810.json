@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "inkling-gate-e-strict-json-live-validation-record",
+  "recorded_at": "2026-08-10T02:31:00Z",
+  "result": "pass-and-fully-torn-down",
+  "source": {
+    "commit": "aa2e7dd0f8f5fd1be0e4449f802ae5b72ffc534a",
+    "branch": "main",
+    "docker_context_sha256": "4c38c2033a73052a22f85057051920908d141e9e9d2894c10310170c79f6daef",
+    "docker_context_entries": 221,
+    "docker_context_payload_bytes": 1691080,
+    "eos_hotfix_patch": "patches/vllm/0004-inkling-model-eos-structured-output.patch",
+    "eos_hotfix_patch_sha256": "ea20b4ba86f637aadee228b5cf98ffdb1068be3dd62c31ad3c33ce0fd4792ff2",
+    "model_config_eos_token_id": 200006,
+    "superseded_xgrammar_auto_detected_eos_token_id": 199999
+  },
+  "recovery": {
+    "main_fast_forwarded_to_hotfix_commit": true,
+    "hotfix_branch_retained": "codex/inkling-strict-json-hotfix",
+    "other_worktree_branch_retained": "codex/inkling-vertex-serving-deployment",
+    "other_worktree_commit": "4ec91c884b2f6e22d3341ef0642db087bf9953ff",
+    "other_worktree_patch_equivalent_main_commit": "1c2ccdbd956661b11ed4c433c44243c2d7d7fe6c",
+    "other_worktree_git_cherry_status_against_main": "-",
+    "other_worktree_unique_patches_integrated": true,
+    "git_bundle_path": "/Users/andrewverdiramo/Desktop/inkling-small-ampere-hotfix-2026-08-09.bundle",
+    "git_bundle_sha256": "e5824f34cab9032a55829e1f5c020b50142447a64fb8fff7f4057269c6a55324",
+    "git_bundle_verified_complete_history": true
+  },
+  "image": {
+    "platform": "linux/amd64",
+    "tag": "gate-e-eos-aa2e7dd-20260809-4c38c2033a73",
+    "uri": "us-central1-docker.pkg.dev/project-49b1b523-d248-434f-bd4/inkling-serving/inkling-small-ampere@sha256:5cd713ab404a051892e98f624858f2550e50781489fa916d47f971974c310575",
+    "registry_digest": "sha256:5cd713ab404a051892e98f624858f2550e50781489fa916d47f971974c310575",
+    "local_image_size_bytes": 11849762997,
+    "vllm_version": "0.26.0+cu129",
+    "runtime_patch_count": 4,
+    "bootstrap_dry_run_status": "ready-for-runtime-preflight",
+    "bootstrap_dry_run_blockers": [],
+    "build_attempts": 1,
+    "push_attempts": 1
+  },
+  "vertex": {
+    "project": "project-49b1b523-d248-434f-bd4",
+    "project_number": "232930557062",
+    "region": "us-central1",
+    "endpoint": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e",
+    "model_id": "inkling-small-w8a16-gate-e-v7",
+    "artifact_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/conversions/conversion-e747e8121d5cd12c54c9",
+    "model_upload_operation": "projects/232930557062/locations/us-central1/models/inkling-small-w8a16-gate-e-v7/operations/4541135962205323264",
+    "deploy_operation": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e/operations/5923741047808065536",
+    "deploy_submitted_at": "2026-08-10T01:34:03.387147Z",
+    "deploy_terminal_at": "2026-08-10T02:27:32.691238Z",
+    "deploy_terminal_stage": "SUCCESSFULLY_DEPLOYED",
+    "deployed_model_id": "2460949465276612608",
+    "machine_type": "a2-ultragpu-4g",
+    "accelerator_type": "NVIDIA_A100_80GB",
+    "accelerator_count": 4,
+    "min_replica_count": 1,
+    "max_replica_count": 1,
+    "automatic_retry_count": 0,
+    "serving_quota_effective_limit": 4,
+    "oauth_monitoring_recovery": {
+      "initial_controller_token_expired_during_image_pull": true,
+      "deploy_operation_resubmitted": false,
+      "existing_operation_reattached": true,
+      "validation_or_deployment_effect": "none"
+    }
+  },
+  "responses_acceptance": {
+    "served_model": "w8a16-balanced-v1",
+    "structured_outputs_request_shape": "Responses text.format json_schema strict true",
+    "structured_nonstream": {
+      "status": "pass",
+      "response_id": "resp_b5456fe2c1787d0f",
+      "output": {
+        "ready": true,
+        "check": 1
+      },
+      "input_tokens": 39,
+      "output_tokens": 13,
+      "total_tokens": 52
+    },
+    "structured_stream": {
+      "status": "pass",
+      "response_id": "resp_a2cf2c904e8115fb",
+      "event_count": 23,
+      "terminal_event": "response.completed",
+      "output": {
+        "ready": true,
+        "check": 1
+      },
+      "input_tokens": 39,
+      "output_tokens": 17,
+      "total_tokens": 56
+    },
+    "plain_stream": {
+      "status": "pass",
+      "response_id": "resp_842f386aaf282d18",
+      "event_count": 10,
+      "terminal_event": "response.completed",
+      "output_text": "READY",
+      "input_tokens": 30,
+      "output_tokens": 4,
+      "total_tokens": 34
+    }
+  },
+  "cleanup": {
+    "undeploy_operation": "projects/232930557062/locations/us-central1/endpoints/inkling-small-responses-gate-e/operations/8388652603235368960",
+    "model_delete_operation": "projects/232930557062/locations/us-central1/models/inkling-small-w8a16-gate-e-v7/operations/3354191169788575744",
+    "completed_at": "2026-08-10T02:29:30.894254Z",
+    "independently_verified_at": "2026-08-10T02:31:00Z",
+    "endpoint_deployed_model_count": 0,
+    "temporary_model_absent": true,
+    "active_custom_job_count": 0,
+    "persistent_resource_count": 0,
+    "zero_active_gpu_compute": true
+  },
+  "cost_arithmetic": {
+    "observed_node_rate_usd_per_hour": 23.1273896,
+    "deploy_to_cleanup_seconds": 3328.1281259059906,
+    "full_rate_arithmetic_usd": 21.380809946262694,
+    "actual_billing_status": "not-yet-verifiable",
+    "additional_storage_logging_and_network_charges_excluded": true
+  }
+}
