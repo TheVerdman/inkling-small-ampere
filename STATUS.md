@@ -1,12 +1,55 @@
 # Project status
 
-Last verified: 2026-08-09 01:39 EDT (2026-08-09 05:39 UTC)
+Last verified: 2026-08-09 18:47 EDT (2026-08-09 22:47 UTC)
 
 ## Executive state
 
-## Live Gate E rollout update
+## Final teardown and strict-JSON correction
 
-The authenticated consumer edge is now provisioned at
+The final bounded live run is over and all serving compute is torn down. A
+read-only audit at `2026-08-09T22:47:00Z` found no `deployedModels` on the
+dedicated Vertex Endpoint, no nonterminal Vertex CustomJobs, no Vertex
+persistent resources, and no Cloud Run service named
+`inkling-small-responses-edge`. Therefore zero GPU-backed Vertex replicas and
+zero active CustomJobs remain. The retained Endpoint object, Model metadata,
+container images, and checkpoint artifacts are non-running resources; their
+underlying Artifact Registry and Cloud Storage bytes may still incur storage
+charges.
+
+The final live acceptance result was mixed:
+
+- normal Responses passed (`resp_ba95c6c44e8cf4c7`, output `READY`);
+- streaming passed (`resp_840aaf3d58d3366e`, 10 events, terminal output
+  `READY`);
+- strict JSON failed with HTTP 500. Backend request
+  `resp_90941eee1428338f` ended when xgrammar rejected token `107036`.
+
+Post-teardown analysis reproduced the strict failure with the exact retained
+Inkling tokenizer and the serving image's xgrammar `0.2.3`. The tokenizer does
+not declare a generic EOS token, so xgrammar auto-detected token `199999`
+(`<|endoftext|>`), while Inkling's model config and vLLM generation path use
+token `200006` (`<|content_model_end_sampling|>`). After valid JSON, xgrammar
+forced `199999`, marked its matcher terminated, and vLLM continued generation;
+the next arbitrary token was then reported as the rejection. This explains the
+changing rejected-token symptom and replaces the prior token-specific
+workaround with a termination-level fix.
+
+Runtime patch
+`patches/vllm/0004-inkling-model-eos-structured-output.patch` now makes the
+Inkling renderer and xgrammar compiler use the model-config EOS. It contains no
+rejected-token or begin-token trimming. Against the exact vLLM `0.26.0` source
+and tokenizer, both legal sequences (optional begin token plus JSON, and JSON
+without it) accept the complete strict object, accept model EOS `200006`, and
+terminate cleanly. Patch application, hash verification, Python compilation,
+formatting, lint, strict typing, and all 113 repository tests pass. The fix has
+not been rebuilt or live-deployed because the user-designated final GPU run had
+already ended; strict JSON therefore remains live-unvalidated, and the branch
+must not be represented as production-ready or merged wholesale on that basis.
+
+## Historical Gate E rollout update
+
+The following rollout chronology is preserved as evidence and is superseded by
+the final teardown state above. The authenticated consumer edge was provisioned at
 `https://inkling-small-responses-edge-232930557062.us-central1.run.app` from
 immutable digest
 `sha256:41a32fc5906955f790693861ae6b8e7a333d1073194ef0757a06cba882ad3239`.

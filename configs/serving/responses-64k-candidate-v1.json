@@ -83,8 +83,8 @@
       "sha256": "3b051d4ed02a7eb6eda5c0f0b65cfb445b7e9ee8d8aa78ce4c40a62ad350d7c0"
     },
     {
-      "path": "patches/vllm/0004-inkling-structured-output-begin-token.patch",
-      "sha256": "5d726e8606401490d6abad519339d65d81b3ef0c2e87631d5ce944cb54257970"
+      "path": "patches/vllm/0004-inkling-model-eos-structured-output.patch",
+      "sha256": "ea20b4ba86f637aadee228b5cf98ffdb1068be3dd62c31ad3c33ce0fd4792ff2"
     }
   ]
 }

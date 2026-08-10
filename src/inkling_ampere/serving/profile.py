@@ -170,9 +170,7 @@ class ServingProfile:
             else "--no-enable-prefix-caching"
         )
         command.append(
-            "--async-scheduling"
-            if runtime.async_scheduling
-            else "--no-async-scheduling"
+            "--async-scheduling" if runtime.async_scheduling else "--no-async-scheduling"
         )
         if runtime.enforce_eager:
             command.append("--enforce-eager")
@@ -446,9 +444,7 @@ def load_serving_profile(path: Path) -> ServingProfile:
             enable_chunked_prefill=_boolean(
                 runtime.get("enable_chunked_prefill"), "runtime.enable_chunked_prefill"
             ),
-            async_scheduling=_boolean(
-                runtime.get("async_scheduling"), "runtime.async_scheduling"
-            ),
+            async_scheduling=_boolean(runtime.get("async_scheduling"), "runtime.async_scheduling"),
             language_model_only=_boolean(
                 runtime.get("language_model_only"), "runtime.language_model_only"
             ),

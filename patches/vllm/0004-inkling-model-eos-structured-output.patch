@@ -1,0 +1,48 @@
+diff --git a/vllm/renderers/inkling.py b/vllm/renderers/inkling.py
+--- a/vllm/renderers/inkling.py
++++ b/vllm/renderers/inkling.py
+@@ -99,6 +99,22 @@ class InklingRenderer(BaseRenderer[HfTokenizer]):
+         self._inkling_tokenizer = _HfBackedTmlTokenizer(self.get_tokenizer())
+         self._render_async = make_async(self._render, executor=self._executor)
+ 
++    def get_eos_token_id(self) -> int | None:
++        """Return Inkling's model-level sampling terminator.
++
++        Inkling's tokenizer does not designate a generic EOS token. Its model
++        config identifies ``<|content_model_end_sampling|>`` instead, so use
++        that value when the tokenizer-level field is absent.
++        """
++
++        tokenizer_eos_token_id = super().get_eos_token_id()
++        if tokenizer_eos_token_id is not None:
++            return tokenizer_eos_token_id
++        model_eos_token_id = getattr(
++            self.model_config.hf_config, "eos_token_id", None
++        )
++        return model_eos_token_id if isinstance(model_eos_token_id, int) else None
++
+     def _render(
+         self,
+         messages: list[ChatCompletionMessageParam],
+diff --git a/vllm/v1/structured_output/backend_xgrammar.py b/vllm/v1/structured_output/backend_xgrammar.py
+--- a/vllm/v1/structured_output/backend_xgrammar.py
++++ b/vllm/v1/structured_output/backend_xgrammar.py
+@@ -58,9 +58,18 @@ class XgrammarBackend(StructuredOutputBackend):
+                 add_prefix_space=True,
+             )
+         else:
++            # Keep xgrammar's terminal tokens aligned with the model's
++            # generation stop tokens. Some model-aware tokenizers intentionally
++            # leave ``tokenizer.eos_token_id`` unset; xgrammar's spelling-based
++            # fallback can then select a different special token and terminate
++            # the grammar without terminating generation.
++            stop_token_ids = getattr(
++                self.vllm_config.model_config.hf_config, "eos_token_id", None
++            )
+             tokenizer_info = xgr.TokenizerInfo.from_huggingface(
+                 self.tokenizer,
+                 vocab_size=self.vocab_size,
++                stop_token_ids=stop_token_ids,
+             )
+         self.compiler = xgr.GrammarCompiler(
+             tokenizer_info,
