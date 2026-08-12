@@ -1,0 +1,81 @@
+diff --git a/vllm/entrypoints/openai/responses/protocol.py b/vllm/entrypoints/openai/responses/protocol.py
+--- a/vllm/entrypoints/openai/responses/protocol.py
++++ b/vllm/entrypoints/openai/responses/protocol.py
+@@ -59,6 +59,7 @@
+ from vllm.entrypoints.chat_utils import (
+     ChatCompletionMessageParam,
+     ChatTemplateContentFormatOption,
++    CustomChatCompletionMessageParam,
+ )
+ from vllm.entrypoints.openai.engine.protocol import OpenAIBaseModel
+ from vllm.exceptions import VLLMValidationError
+@@ -130,7 +131,11 @@
+ ResponseInputOutputMessage: TypeAlias = (
+     list[ChatCompletionMessageParam] | list[ResponseRawMessageAndToken]
+ )
+-ResponseInputOutputItem: TypeAlias = ResponseInputItemParam | ResponseOutputItem
++ResponseInputOutputItem: TypeAlias = (
++    ResponseInputItemParam
++    | ResponseOutputItem
++    | CustomChatCompletionMessageParam
++)
+ 
+ 
+ class ResponsesRequest(OpenAIBaseModel):
+diff --git a/tests/entrypoints/openai/responses/test_protocol.py b/tests/entrypoints/openai/responses/test_protocol.py
+--- a/tests/entrypoints/openai/responses/test_protocol.py
++++ b/tests/entrypoints/openai/responses/test_protocol.py
+@@ -5,6 +5,7 @@ from openai_harmony import (
+ )
+ 
+ from vllm.entrypoints.openai.responses.protocol import (
++    ResponsesRequest,
+     serialize_message,
+     serialize_messages,
+ )
+@@ -27,13 +28,45 @@
+ def test_serialize_messages() -> None:
+     assert serialize_messages(None) is None
+     assert serialize_messages([]) is None
+ 
+     dict_value = {"a": 3, "b": "4"}
+     msg_value = {
+         "role": "assistant",
+         "name": None,
+         "content": [{"type": "text", "text": "Test 2"}],
+         "channel": "analysis",
+     }
+     msg = Message.from_dict(msg_value)
+     assert serialize_messages([msg, dict_value]) == [msg_value, dict_value]
++
++
++def test_responses_request_accepts_input_audio_content() -> None:
++    request = ResponsesRequest.model_validate(
++        {
++            "model": "test-model",
++            "input": [
++                {
++                    "type": "message",
++                    "role": "user",
++                    "content": [
++                        {
++                            "type": "input_audio",
++                            "input_audio": {
++                                "data": "UklGRg==",
++                                "format": "wav",
++                            },
++                        },
++                        {"type": "input_text", "text": "Describe this audio."},
++                    ],
++                }
++            ],
++        }
++    )
++
++    assert isinstance(request.input, list)
++    message = request.input[0]
++    assert isinstance(message, dict)
++    content = message["content"]
++    assert isinstance(content, list)
++    assert content[0]["type"] == "input_audio"
++    assert content[0]["input_audio"]["format"] == "wav"

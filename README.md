@@ -94,6 +94,16 @@ INKLING_API_KEY=... \
   --output results/raw/gate-e-responses-endpoint.json
 ```
 
+The isolated image/audio-input to text-output release track, including the
+native-processor-before-Responses gate, content-addressed fixtures, strict
+decoded-media limits, independent multimodal ladders, and detached image/edge
+provenance attestation, is documented in the [multimodal release gate](docs/multimodal-release-gate.md).
+Its no-GPU local contract is:
+
+```bash
+make multimodal-local-check
+```
+
 The serving quota is now verified at exactly 4/4. Inspect the fail-closed
 Vertex request bodies, prediction bootstrap gates, conditional storage probe,
 and Responses edge without building an image or touching cloud state:

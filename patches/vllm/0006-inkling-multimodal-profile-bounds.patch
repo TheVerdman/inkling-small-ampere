@@ -1,0 +1,91 @@
+diff --git a/vllm/models/inkling/common/mm_preprocess.py b/vllm/models/inkling/common/mm_preprocess.py
+--- a/vllm/models/inkling/common/mm_preprocess.py
++++ b/vllm/models/inkling/common/mm_preprocess.py
+@@ -153,15 +153,22 @@ class InklingDummyInputsBuilder(BaseDummyInputsBuilder[InklingProcessingInfo]):
+ 
+         mm_data: dict[str, Any] = {}
+         if num_images:
++            image_overrides = mm_options.get("image")
++            image_options = cast(ImageDummyOptions | None, image_overrides)
+             patch_size = getattr(config.vision_config, "patch_size", 40)
+             # A square image ~4 patches wide so the dummy emits several patches.
+             side = patch_size * 4
+-            image_overrides = mm_options.get("image")
++            # Explicit serving bounds are the profiling maximum, including when
++            # they exceed the small fallback used by an unconfigured runtime.
++            width = image_options.width if image_options and image_options.width else side
++            height = (
++                image_options.height if image_options and image_options.height else side
++            )
+             mm_data["image"] = self._get_dummy_images(
+-                width=side,
+-                height=side,
++                width=width,
++                height=height,
+                 num_images=num_images,
+-                overrides=cast(ImageDummyOptions | None, image_overrides),
++                overrides=image_options,
+             )
+         if num_audios:
+             # Size the dummy at the maximum allowed audio so memory/encoder
+diff --git a/tests/models/inkling/test_contract_validation.py b/tests/models/inkling/test_contract_validation.py
+--- a/tests/models/inkling/test_contract_validation.py
++++ b/tests/models/inkling/test_contract_validation.py
+@@ -4,8 +4,12 @@
+ import numpy as np
+ import pytest
+ 
+ from vllm.config.compilation import CompilationConfig, CUDAGraphMode
+-from vllm.models.inkling.common.mm_preprocess import InklingMultiModalDataParser
++from vllm.config.multimodal import AudioDummyOptions, ImageDummyOptions
++from vllm.models.inkling.common.mm_preprocess import (
++    InklingDummyInputsBuilder,
++    InklingMultiModalDataParser,
++)
+ from vllm.models.inkling.configs import (
+     InklingAudioConfig,
+     InklingModelConfig,
+@@ -35,5 +39,43 @@ def test_inkling_raw_2d_audio_is_rejected_as_ambiguous():
+         parser._parse_audio_data(np.zeros((2, 100), dtype=np.float32))
+ 
+ 
++def test_inkling_dummy_inputs_honor_explicit_serving_bounds():
++    class FakeInfo:
++        def get_hf_config(self):
++            class VisionConfig:
++                patch_size = 40
++
++            class Config:
++                vision_config = VisionConfig()
++
++            return Config()
++
++        def get_hf_processor(self):
++            class Params:
++                audio_token_duration_s = 0.05
++                sample_rate = 16_000
++
++            class AudioFeatureExtractor:
++                params = Params()
++
++            class Processor:
++                audio_feature_extractor = AudioFeatureExtractor()
++
++            return Processor()
++
++    builder = InklingDummyInputsBuilder(FakeInfo())
++    data = builder.get_dummy_mm_data(
++        seq_len=2048,
++        mm_counts={"image": 1, "audio": 1},
++        mm_options={
++            "image": ImageDummyOptions(count=1, width=800, height=800),
++            "audio": AudioDummyOptions(count=1, length=480_000),
++        },
++    )
++
++    assert data["image"][0].size == (800, 800)
++    assert data["audio"][0].shape == (480_000,)
++
++
+ def test_inkling_mtp_chain_norm_is_disabled_by_default():
+     assert InklingModelConfig().chain_hidden_post_norm is False

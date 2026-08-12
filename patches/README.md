@@ -25,6 +25,21 @@ All patches target vLLM revision
    size), rather than the TP-local intermediate width. This matters whenever
    the local intermediate width is no greater than the group size while the
    hidden dimension still contains multiple groups.
+4. `vllm/0004-inkling-model-eos-structured-output.patch`
+   (`ea20b4ba86f637aadee228b5cf98ffdb1068be3dd62c31ad3c33ce0fd4792ff2`)
+   uses Inkling's configured model EOS in Harmony and structured-output paths.
+   It is part of the proven text serving image.
+5. `vllm/0005-responses-input-audio-content.patch`
+   (`fa92f2ec707fd44d419db0ad9dd7f310b57f61521372c3e3cd8ccc451f71f714`)
+   admits vLLM's existing custom `input_audio` content shape through the
+   Responses request model so the already-shared native audio parser can run.
+   It is applied only by the isolated multimodal image.
+6. `vllm/0006-inkling-multimodal-profile-bounds.patch`
+   (`0c4de7fa5f1cfbb004917f7fa6c56717c19d6f2aeed210eda0db0adeeba92ab2`)
+   makes Inkling's multimodal dummy input builder honor explicit image bounds.
+   Together with vLLM's existing audio-length override, this profiles the
+   exact 800x800 image and 480,000-sample audio ceilings admitted by the
+   isolated profile instead of the upstream fallback dummy sizes.
 
 Apply the complete review patches to a clean vLLM checkout:
 
@@ -33,13 +48,17 @@ git apply --check patches/vllm/0001-inkling-sm80-flex-relative-attention.patch
 git apply patches/vllm/0001-inkling-sm80-flex-relative-attention.patch
 git apply patches/vllm/0002-inkling-fused-wna16-loader.patch
 git apply patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch
+git apply patches/vllm/0004-inkling-model-eos-structured-output.patch
+git apply patches/vllm/0005-responses-input-audio-content.patch
+git apply patches/vllm/0006-inkling-multimodal-profile-bounds.patch
 ```
 
 The Vertex launchers use `scripts/apply_unified_diff.py` because the pinned
 serving image has no Git binary. They select only `vllm/` production paths;
 the same patch files retain the CPU/GPU unit tests for an upstream review.
 
-All three patches are live-validated in Vertex job `8517676070802030592`.
+The first three execution patches are live-validated in Vertex job
+`8517676070802030592`.
 Patch 0002 loaded the real quantized `InklingMoE` module in both TP4 and EP4.
 Patch 0003 corrected the grouped-scale permutation exposed by the first
 numerical run: the patched Marlin path then agreed with the direct BF16 layer

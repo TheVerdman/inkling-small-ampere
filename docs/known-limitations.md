@@ -29,9 +29,15 @@ As of the final bounded Gate E hotfix acceptance on 2026-08-10:
 - Nsight Systems and Nsight Compute are absent from the pinned serving image.
   Current kernel evidence comes from Torch profiler events; standalone Nsight
   traces remain a release follow-up.
-- Image, audio, Responses tools/reasoning events, batching, concurrent-request
-  behavior, prefix caching, CUDA graphs, MTP, and LoRA remain untested on the
-  complete checkpoint.
+- An isolated image/audio-input to text-output runtime, admission boundary,
+  content-addressed fixture set, native-engine-first validator, Responses
+  bridge validator, independent context ladders, and provenance aggregator are
+  implemented. Their local dry run passes, but no complete-checkpoint GPU or
+  live endpoint multimodal report exists yet; all checked-in image, audio, and
+  mixed-media capability states therefore remain unvalidated. Audio generation
+  is explicitly outside scope. Responses tools/reasoning events with media,
+  batching, concurrent-request behavior, prefix caching, CUDA graphs, MTP, and
+  LoRA remain untested on the complete checkpoint.
 - The exact EOS-hotfix image passed live direct-Vertex Responses strict JSON in
   non-streaming and SSE modes plus ordinary SSE. The same image then passed
   exact strict-schema opening/middle/closing retrieval at 2K, 8K, 32K, 64K,

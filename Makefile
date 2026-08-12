@@ -9,7 +9,7 @@ DOCTOR_ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory vertex-gate-e-dry-run test lint format format-check typecheck check
+.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory multimodal-local-check vertex-gate-e-dry-run test lint format format-check typecheck check
 
 help:
 	@echo "Inkling-Small Ampere development commands"
@@ -18,6 +18,7 @@ help:
 	@echo "  make doctor-strict  Require the four-A100 target contract"
 	@echo "  make inspect-checkpoint  Read pinned checkpoint headers only"
 	@echo "  make model-memory   Project profiles and all four-rank placements"
+	@echo "  make multimodal-local-check  Verify media patches, fixtures, admission, and native dry run"
 	@echo "  make vertex-gate-e-dry-run  Render fail-closed Vertex, bootstrap, probe, and edge gates"
 	@echo "  make bootstrap      Install pinned uv locally and sync the dev environment"
 	@echo "  make check          Run hermetic formatting, lint, types, and tests"
@@ -49,6 +50,17 @@ inspect-checkpoint:
 model-memory:
 	PYTHONPATH=src $(UV) run --frozen python scripts/model_memory.py
 	PYTHONPATH=src $(UV) run --frozen python scripts/simulate_sharding.py
+
+multimodal-local-check:
+	PYTHONPATH=src:. $(GATE_E_PYTHON) scripts/apply_runtime_patchset.py \
+		--project-root . \
+		--multimodal \
+		--verify-only
+	PYTHONPATH=src:. $(GATE_E_PYTHON) scripts/gpu/validate_multimodal_native_engine.py \
+		--profile configs/serving/responses-2k-multimodal-bringup-v1.json \
+		--research-manifest manifests/multimodal-research-control-v1.json \
+		--dry-run \
+		--output /tmp/inkling-multimodal-native-dry-run.json
 
 vertex-gate-e-dry-run:
 	PYTHONPATH=src $(GATE_E_PYTHON) scripts/render_vertex_gate_e.py

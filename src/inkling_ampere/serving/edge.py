@@ -17,7 +17,12 @@ from urllib.parse import urlsplit
 
 from inkling_ampere.instrumentation.gcs import MetadataTokenProvider
 from inkling_ampere.serving.bootstrap import _load_plan
-from inkling_ampere.serving.profile import ServingProfile, load_serving_profile
+from inkling_ampere.serving.media import MediaAdmissionError, validate_responses_media_request
+from inkling_ampere.serving.profile import (
+    MultimodalSettings,
+    ServingProfile,
+    load_serving_profile,
+)
 
 _DEFAULT_PLAN = Path("/opt/inkling/app/configs/serving/vertex-gate-e-plan-v1.json")
 _DEFAULT_PROFILE = Path("/opt/inkling/app/configs/serving/responses-2k-bringup-v1.json")
@@ -71,7 +76,12 @@ def _external_settings(plan: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
-def build_invoke_request(body: bytes, content_type: str) -> bytes:
+def build_invoke_request(
+    body: bytes,
+    content_type: str,
+    *,
+    multimodal: MultimodalSettings | None = None,
+) -> bytes:
     """Build the raw v1 dedicated-Endpoint Invoke body and adapt strict schemas.
 
     The official ``Endpoint.invoke`` transport sends the original bytes directly
@@ -93,6 +103,11 @@ def build_invoke_request(body: bytes, content_type: str) -> bytes:
         raise EdgeRequestError("Responses request body must be valid UTF-8 JSON.") from exc
     if not isinstance(request, dict):
         raise EdgeRequestError("Responses request body must be a JSON object.")
+    if multimodal is not None:
+        try:
+            validate_responses_media_request(request, multimodal)
+        except MediaAdmissionError as exc:
+            raise EdgeRequestError(str(exc)) from exc
     if "structured_outputs" in request:
         raise EdgeRequestError(
             "The public contract does not accept vLLM structured_outputs extensions."
@@ -242,6 +257,10 @@ class EdgeApplication:
             raise EdgeConfigurationError(
                 "incoming edge bearer secret must contain at least 32 chars"
             )
+        if maximum_request_bytes != profile.multimodal.maximum_request_bytes:
+            raise EdgeConfigurationError(
+                "edge request limit differs from the serving profile admission limit"
+            )
         self.profile = profile
         self.incoming_secret = incoming_secret
         self.client = client
@@ -353,7 +372,11 @@ class _EdgeHandler(BaseHTTPRequestHandler):
             return
         accept = self.headers.get("Accept", "application/json, text/event-stream")
         try:
-            upstream_body = build_invoke_request(body, content_type)
+            upstream_body = build_invoke_request(
+                body,
+                content_type,
+                multimodal=self.server.application.profile.multimodal,
+            )
         except EdgeRequestError as exc:
             self._error(HTTPStatus.BAD_REQUEST, str(exc))
             return

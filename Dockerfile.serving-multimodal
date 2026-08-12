@@ -1,0 +1,59 @@
+# Isolated multimodal bring-up image. This must not replace the validated
+# text-only Dockerfile.serving until every multimodal release gate passes.
+ARG VLLM_IMAGE="vllm/vllm-openai:v0.26.0-x86_64-cu129-ubuntu2404@sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8"
+FROM ${VLLM_IMAGE}
+
+ARG SERVING_PROFILE_SOURCE="configs/serving/responses-2k-multimodal-bringup-v1.json"
+ARG SCIPY_VERSION="1.13.1"
+ARG SCIPY_WHEEL="scipy-1.13.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+ARG SCIPY_WHEEL_SHA256="de3ade0e53bc1f21358aa74ff4830235d716211d7d077e340c7349bc3542e884"
+
+LABEL org.opencontainers.image.title="Inkling-Small Ampere multimodal Responses server"
+LABEL org.opencontainers.image.description="Isolated image/audio-input to text-output TP4 bring-up"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /opt/inkling/app
+
+RUN /usr/bin/python3 -m pip download \
+    --disable-pip-version-check \
+    --no-deps \
+    --only-binary=:all: \
+    --dest /tmp/inkling-scipy \
+    "scipy==${SCIPY_VERSION}" \
+    && echo "${SCIPY_WHEEL_SHA256}  /tmp/inkling-scipy/${SCIPY_WHEEL}" | sha256sum --check --strict \
+    && /usr/bin/python3 -m pip install \
+        --disable-pip-version-check \
+        --no-deps \
+        --no-index \
+        --no-cache-dir \
+        "/tmp/inkling-scipy/${SCIPY_WHEEL}" \
+    && rm -rf /tmp/inkling-scipy
+RUN /usr/bin/python3 -c 'import numpy, scipy; from scipy.optimize import linear_sum_assignment; assert numpy.__version__ == "2.2.6"; assert scipy.__version__ == "1.13.1"; rows, columns = linear_sum_assignment([[4.0, 1.0, 3.0], [2.0, 0.0, 5.0], [3.0, 2.0, 2.0]]); assert rows.tolist() == [0, 1, 2]; assert columns.tolist() == [1, 0, 2]'
+
+COPY pyproject.toml README.md LICENSE NOTICE ./
+COPY src ./src
+RUN /usr/bin/python3 -m pip install --no-deps .
+
+COPY patches ./patches
+COPY scripts/__init__.py scripts/apply_unified_diff.py scripts/apply_runtime_patchset.py ./scripts/
+COPY scripts/gpu/__init__.py scripts/gpu/validate_multimodal_native_engine.py scripts/gpu/run_multimodal_native_job.py ./scripts/gpu/
+COPY configs/serving ./configs/serving
+COPY ${SERVING_PROFILE_SOURCE} ./configs/serving/active-multimodal-profile.json
+COPY manifests ./manifests
+
+RUN /usr/bin/python3 -m scripts.apply_runtime_patchset \
+    --project-root /opt/inkling/app \
+    --marker /opt/inkling/runtime-patchset.json \
+    --multimodal
+
+ENV PYTHONPATH=/opt/inkling/app/src:/opt/inkling/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    INKLING_SERVING_BASE_IMAGE_DIGEST=sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8 \
+    INKLING_SERVING_PROFILE=/opt/inkling/app/configs/serving/active-multimodal-profile.json \
+    INKLING_VERTEX_PLAN=/opt/inkling/app/configs/serving/vertex-gate-e-plan-v1.json
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/bin/python3", "-m", "inkling_ampere.serving.bootstrap"]
+CMD ["--profile", "/opt/inkling/app/configs/serving/active-multimodal-profile.json"]

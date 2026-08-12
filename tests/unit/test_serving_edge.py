@@ -6,6 +6,11 @@ from typing import Any
 
 import pytest
 
+from inkling_ampere.evaluation.multimodal import (
+    build_responses_media_request,
+    fixture_payloads,
+    load_research_manifest,
+)
 from inkling_ampere.serving.bootstrap import _load_plan
 from inkling_ampere.serving.edge import (
     EdgeApplication,
@@ -20,7 +25,13 @@ from inkling_ampere.serving.profile import load_serving_profile
 
 _ROOT = Path(__file__).resolve().parents[2]
 _PROFILE = load_serving_profile(_ROOT / "configs/serving/responses-2k-bringup-v1.json")
+_MULTIMODAL_PROFILE = load_serving_profile(
+    _ROOT / "configs/serving/responses-2k-multimodal-bringup-v1.json"
+)
 _PLAN = _load_plan(_ROOT / "configs/serving/vertex-gate-e-plan-v1.json")
+_FIXTURES = fixture_payloads(
+    load_research_manifest(_ROOT / "manifests/multimodal-research-control-v1.json")
+)
 
 
 class _FakeResponse:
@@ -162,3 +173,52 @@ def test_edge_documents_and_sse_relay_preserve_bytes() -> None:
 
     assert client.calls == [(public_body, "application/json", "text/event-stream")]
     assert response.closed is True
+
+
+def test_multimodal_edge_validates_media_before_vertex_invoke() -> None:
+    request = build_responses_media_request(
+        model=_MULTIMODAL_PROFILE.model.served_model_name,
+        fixtures=[_FIXTURES["image-pattern-40"], _FIXTURES["audio-low-1s"]],
+        prompt="Describe both inputs.",
+        max_output_tokens=16,
+    )
+    body = json.dumps(request, separators=(",", ":")).encode()
+
+    assert (
+        build_invoke_request(
+            body,
+            "application/json",
+            multimodal=_MULTIMODAL_PROFILE.multimodal,
+        )
+        == body
+    )
+
+    malformed = build_responses_media_request(
+        model=_MULTIMODAL_PROFILE.model.served_model_name,
+        fixtures=[_FIXTURES["audio-malformed"]],
+        prompt="Describe the audio.",
+        max_output_tokens=16,
+    )
+    with pytest.raises(ValueError, match="malformed"):
+        build_invoke_request(
+            json.dumps(malformed).encode(),
+            "application/json",
+            multimodal=_MULTIMODAL_PROFILE.multimodal,
+        )
+
+
+def test_multimodal_edge_capabilities_publish_independent_limits() -> None:
+    response = _FakeResponse(b"{}", "application/json")
+    application = EdgeApplication(
+        profile=_MULTIMODAL_PROFILE,
+        incoming_secret="s" * 32,
+        client=_FakeClient(response),
+        maximum_request_bytes=10_485_760,
+    )
+
+    capabilities = json.loads(application.capabilities_body)
+    modalities = capabilities["modalities"]
+    assert modalities["image"]["formats"] == ["png"]
+    assert modalities["audio"]["formats"] == ["wav"]
+    assert modalities["mixed_media"]["enabled"] is True
+    assert modalities["audio_generation"]["supported"] is False

@@ -10,11 +10,24 @@ identity, pinned vLLM version, and runtime patch marker before executing vLLM.
 A `--dry-run` prints the exact redacted command and capability document without
 importing vLLM or touching a GPU.
 
-`apply_runtime_patchset.py` verifies and applies the three numbered vLLM
-patches during `Dockerfile.serving` builds, then records their hashes in the
+`apply_runtime_patchset.py` preserves the proven four-patch text set and adds
+patches 0005 and 0006 only with `--multimodal`; both modes record exact hashes in the
 startup marker. `validate_responses_endpoint.py` checks model discovery,
 capability negotiation, strict structured output, token usage, SSE parsing,
 and the terminal `response.completed` object through the consumer-facing edge.
+
+`gpu/validate_multimodal_native_engine.py` materializes every content-addressed
+media fixture, checks all admission outcomes, then calls the in-process vLLM
+`LLM.chat` path on four A100s. It validates the native processor and engine
+before any Responses adapter. `validate_multimodal_responses_endpoint.py`
+requires that native report, checks exact live capabilities and bridge
+behavior, executes live adversarial cases, and runs independent image, audio,
+and mixed-media context ladders. `aggregate_multimodal_release.py` binds those
+reports to the profile, research manifest, processor assets, exact patch
+marker, immutable serving/edge images, and edge revision.
+`promote_multimodal_profile.py` renders independently validated capability
+states from a passing detached attestation and marks the result as requiring a
+final immutable-image revalidation.
 
 `render_vertex_gate_e.py` validates the pinned project, region, quota, TP4
 shape, one-replica limit, image-digest syntax, checkpoint identity, storage

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -88,10 +90,114 @@ class RuntimePatch:
 
 
 @dataclass(frozen=True)
+class ManifestPin:
+    path: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class ProcessorSettings:
+    assets: tuple[ManifestPin, ...]
+    image_token_id: int
+    audio_token_id: int
+    image_placeholder: str
+    audio_placeholder: str
+    required_weight_prefixes: tuple[str, ...]
+    image_patch_size: int
+    image_rescale_factor: float
+    image_rescale_max_upscaled_long_edge: int
+    audio_token_duration_seconds: float
+    audio_samples_per_token: int
+
+
+@dataclass(frozen=True)
+class ModalityValidation:
+    status: str
+    native_processor: str
+    native_engine: str
+    responses_api: str
+    context_ladder: str
+    maximum_verified_context_tokens: int
+
+
+@dataclass(frozen=True)
+class ImageInputSettings:
+    enabled: bool
+    formats: tuple[str, ...]
+    mime_types: tuple[str, ...]
+    transports: tuple[str, ...]
+    maximum_items: int
+    maximum_base64_characters: int
+    maximum_file_bytes: int
+    maximum_decoded_bytes: int
+    maximum_width: int
+    maximum_height: int
+    maximum_pixels: int
+    maximum_decompression_ratio: float
+    maximum_processor_tokens: int
+    validation: ModalityValidation
+
+
+@dataclass(frozen=True)
+class AudioInputSettings:
+    enabled: bool
+    formats: tuple[str, ...]
+    mime_types: tuple[str, ...]
+    transports: tuple[str, ...]
+    maximum_items: int
+    maximum_base64_characters: int
+    maximum_file_bytes: int
+    maximum_decoded_bytes: int
+    maximum_duration_seconds: float
+    maximum_frames: int
+    sample_rates_hz: tuple[int, ...]
+    channels: tuple[int, ...]
+    sample_width_bytes: tuple[int, ...]
+    maximum_processor_tokens: int
+    validation: ModalityValidation
+
+
+@dataclass(frozen=True)
+class MixedMediaSettings:
+    enabled: bool
+    maximum_total_items: int
+    maximum_total_decoded_bytes: int
+    maximum_processor_tokens: int
+    validation: ModalityValidation
+
+
+@dataclass(frozen=True)
+class PromotionEvidence:
+    attestation_sha256: str
+    attestation_payload_sha256: str
+    candidate_profile_sha256: str
+    serving_image_uri: str
+    responses_edge_image_uri: str
+    responses_edge_revision: str
+
+
+@dataclass(frozen=True)
+class MultimodalSettings:
+    enabled: bool
+    scope: str
+    output_modalities: tuple[str, ...]
+    maximum_request_bytes: int
+    maximum_context_tokens: int
+    minimum_text_context_reserve_tokens: int
+    research_manifest: ManifestPin | None
+    processor: ProcessorSettings | None
+    image: ImageInputSettings
+    audio: AudioInputSettings
+    mixed_media: MixedMediaSettings
+    promotion_evidence: PromotionEvidence | None
+
+
+@dataclass(frozen=True)
 class ServingProfile:
     """Validated launch and capability configuration for one service shape."""
 
     path: Path
+    profile_sha256: str
     schema_version: str
     kind: str
     profile_id: str
@@ -103,7 +209,25 @@ class ServingProfile:
     runtime: RuntimeSettings
     validation: ValidationSettings
     memory_projection: MemoryProjection
+    multimodal: MultimodalSettings
     patches: tuple[RuntimePatch, ...]
+
+    def multimodal_limit_per_prompt(self) -> dict[str, int | dict[str, int]]:
+        """Return vLLM item and profiling bounds from the admission contract."""
+
+        if not self.multimodal.enabled:
+            return {}
+        return {
+            "audio": {
+                "count": self.multimodal.audio.maximum_items,
+                "length": self.multimodal.audio.maximum_frames,
+            },
+            "image": {
+                "count": self.multimodal.image.maximum_items,
+                "height": self.multimodal.image.maximum_height,
+                "width": self.multimodal.image.maximum_width,
+            },
+        }
 
     def vllm_command(
         self,
@@ -176,6 +300,17 @@ class ServingProfile:
             command.append("--enforce-eager")
         if runtime.language_model_only:
             command.append("--language-model-only")
+        if self.multimodal.enabled:
+            command.extend(
+                [
+                    "--limit-mm-per-prompt",
+                    json.dumps(
+                        self.multimodal_limit_per_prompt(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                ]
+            )
         if runtime.disable_custom_all_reduce:
             command.append("--disable-custom-all-reduce")
         if runtime.enable_auto_tool_choice:
@@ -189,10 +324,11 @@ class ServingProfile:
 
         continuation_supported = self.api.response_store_enabled
         return {
-            "schema_version": "1.0.0",
+            "schema_version": "1.1.0",
             "service": "inkling-small-ampere",
             "profile_id": self.profile_id,
             "profile_status": self.status,
+            "profile_sha256": self.profile_sha256,
             "model": {
                 "id": self.model.served_model_name,
                 "checkpoint_id": self.model.checkpoint_id,
@@ -239,6 +375,7 @@ class ServingProfile:
                     ),
                 },
             },
+            "modalities": self._modality_capabilities(),
             "runtime": {
                 "vllm_version": self.runtime.vllm_version,
                 "vllm_commit": self.runtime.vllm_commit,
@@ -258,6 +395,109 @@ class ServingProfile:
                 "responses_api": self.validation.responses_api,
                 "long_context": self.validation.long_context,
                 "maximum_verified_model_len": self.validation.maximum_verified_model_len,
+            },
+        }
+
+    def _modality_capabilities(self) -> dict[str, Any]:
+        multimodal = self.multimodal
+
+        def validation(value: ModalityValidation) -> dict[str, object]:
+            return {
+                "status": value.status,
+                "native_processor": value.native_processor,
+                "native_engine": value.native_engine,
+                "responses_api": value.responses_api,
+                "context_ladder": value.context_ladder,
+                "maximum_verified_context_tokens": value.maximum_verified_context_tokens,
+            }
+
+        image = multimodal.image
+        audio = multimodal.audio
+        mixed = multimodal.mixed_media
+        research = multimodal.research_manifest
+        promotion = multimodal.promotion_evidence
+        return {
+            "scope": multimodal.scope,
+            "input_modalities": ["image", "audio"] if multimodal.enabled else [],
+            "output_modalities": list(multimodal.output_modalities),
+            "audio_generation": {
+                "supported": False,
+                "reason": "Audio generation is a separate project and release contract.",
+            },
+            "maximum_request_bytes": multimodal.maximum_request_bytes,
+            "maximum_context_tokens": multimodal.maximum_context_tokens,
+            "minimum_text_context_reserve_tokens": (multimodal.minimum_text_context_reserve_tokens),
+            "preprocessing": (
+                {
+                    "image_patch_size": multimodal.processor.image_patch_size,
+                    "image_rescale_factor": multimodal.processor.image_rescale_factor,
+                    "image_rescale_max_upscaled_long_edge": (
+                        multimodal.processor.image_rescale_max_upscaled_long_edge
+                    ),
+                    "audio_token_duration_seconds": (
+                        multimodal.processor.audio_token_duration_seconds
+                    ),
+                    "audio_samples_per_token": (multimodal.processor.audio_samples_per_token),
+                }
+                if multimodal.processor is not None
+                else None
+            ),
+            "research_manifest": (
+                {"path": research.path, "sha256": research.sha256} if research is not None else None
+            ),
+            "release_provenance": (
+                {
+                    "attestation_sha256": promotion.attestation_sha256,
+                    "attestation_payload_sha256": promotion.attestation_payload_sha256,
+                    "candidate_profile_sha256": promotion.candidate_profile_sha256,
+                    "serving_image_uri": promotion.serving_image_uri,
+                    "responses_edge_image_uri": promotion.responses_edge_image_uri,
+                    "responses_edge_revision": promotion.responses_edge_revision,
+                }
+                if promotion is not None
+                else None
+            ),
+            "image": {
+                "enabled": image.enabled,
+                "formats": list(image.formats),
+                "mime_types": list(image.mime_types),
+                "transports": list(image.transports),
+                "maximum_items": image.maximum_items,
+                "maximum_base64_characters": image.maximum_base64_characters,
+                "maximum_file_bytes": image.maximum_file_bytes,
+                "maximum_decoded_bytes": image.maximum_decoded_bytes,
+                "maximum_width": image.maximum_width,
+                "maximum_height": image.maximum_height,
+                "maximum_pixels": image.maximum_pixels,
+                "maximum_decompression_ratio": image.maximum_decompression_ratio,
+                "maximum_processor_tokens": image.maximum_processor_tokens,
+                "pixel_encoding": "8-bit-rgb-or-rgba-noninterlaced",
+                "validation": validation(image.validation),
+            },
+            "audio": {
+                "enabled": audio.enabled,
+                "formats": list(audio.formats),
+                "mime_types": list(audio.mime_types),
+                "transports": list(audio.transports),
+                "maximum_items": audio.maximum_items,
+                "maximum_base64_characters": audio.maximum_base64_characters,
+                "maximum_file_bytes": audio.maximum_file_bytes,
+                "maximum_decoded_bytes": audio.maximum_decoded_bytes,
+                "maximum_duration_seconds": audio.maximum_duration_seconds,
+                "maximum_frames": audio.maximum_frames,
+                "sample_rates_hz": list(audio.sample_rates_hz),
+                "channels": list(audio.channels),
+                "sample_width_bytes": list(audio.sample_width_bytes),
+                "encoding": "pcm-signed-little-endian",
+                "maximum_processor_tokens": audio.maximum_processor_tokens,
+                "validation": validation(audio.validation),
+            },
+            "mixed_media": {
+                "enabled": mixed.enabled,
+                "maximum_total_items": mixed.maximum_total_items,
+                "maximum_total_decoded_bytes": mixed.maximum_total_decoded_bytes,
+                "maximum_processor_tokens": mixed.maximum_processor_tokens,
+                "validation": validation(mixed.validation),
             },
         }
 
@@ -290,6 +530,325 @@ def _boolean(value: object, field: str) -> bool:
     if not isinstance(value, bool):
         raise ServingProfileError(f"{field} must be a boolean")
     return value
+
+
+def _strings(value: object, field: str, *, allow_empty: bool = False) -> tuple[str, ...]:
+    if not isinstance(value, list) or (not value and not allow_empty):
+        qualifier = "an array" if allow_empty else "a non-empty array"
+        raise ServingProfileError(f"{field} must be {qualifier} of non-empty strings")
+    if not all(isinstance(item, str) and item.strip() for item in value):
+        raise ServingProfileError(f"{field} must contain only non-empty strings")
+    if len(value) != len(set(value)):
+        raise ServingProfileError(f"{field} must not contain duplicates")
+    return tuple(value)
+
+
+def _integers(value: object, field: str, *, allow_empty: bool = False) -> tuple[int, ...]:
+    if not isinstance(value, list) or (not value and not allow_empty):
+        qualifier = "an array" if allow_empty else "a non-empty array"
+        raise ServingProfileError(f"{field} must be {qualifier} of positive integers")
+    if not all(isinstance(item, int) and not isinstance(item, bool) and item > 0 for item in value):
+        raise ServingProfileError(f"{field} must contain only positive integers")
+    if len(value) != len(set(value)):
+        raise ServingProfileError(f"{field} must not contain duplicates")
+    return tuple(value)
+
+
+def _sha256(value: object, field: str) -> str:
+    digest = _string(value, field)
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ServingProfileError(f"{field} must be lowercase SHA-256")
+    return digest
+
+
+def _manifest_pin(value: object, field: str) -> ManifestPin:
+    record = _object(value, field)
+    return ManifestPin(
+        path=_string(record.get("path"), f"{field}.path"),
+        sha256=_sha256(record.get("sha256"), f"{field}.sha256"),
+    )
+
+
+def _modality_validation(value: object, field: str) -> ModalityValidation:
+    record = _object(value, field)
+    return ModalityValidation(
+        status=_string(record.get("status"), f"{field}.status"),
+        native_processor=_string(record.get("native_processor"), f"{field}.native_processor"),
+        native_engine=_string(record.get("native_engine"), f"{field}.native_engine"),
+        responses_api=_string(record.get("responses_api"), f"{field}.responses_api"),
+        context_ladder=_string(record.get("context_ladder"), f"{field}.context_ladder"),
+        maximum_verified_context_tokens=_integer(
+            record.get("maximum_verified_context_tokens"),
+            f"{field}.maximum_verified_context_tokens",
+            minimum=0,
+        ),
+    )
+
+
+def _unvalidated_modality() -> ModalityValidation:
+    return ModalityValidation(
+        status="not-configured",
+        native_processor="not-configured",
+        native_engine="not-configured",
+        responses_api="not-configured",
+        context_ladder="not-configured",
+        maximum_verified_context_tokens=0,
+    )
+
+
+def _disabled_multimodal(maximum_request_bytes: int = 10_485_760) -> MultimodalSettings:
+    validation = _unvalidated_modality()
+    return MultimodalSettings(
+        enabled=False,
+        scope="image-audio-input-to-text-output",
+        output_modalities=("text",),
+        maximum_request_bytes=maximum_request_bytes,
+        maximum_context_tokens=0,
+        minimum_text_context_reserve_tokens=0,
+        research_manifest=None,
+        processor=None,
+        image=ImageInputSettings(
+            enabled=False,
+            formats=(),
+            mime_types=(),
+            transports=(),
+            maximum_items=0,
+            maximum_base64_characters=0,
+            maximum_file_bytes=0,
+            maximum_decoded_bytes=0,
+            maximum_width=0,
+            maximum_height=0,
+            maximum_pixels=0,
+            maximum_decompression_ratio=0.0,
+            maximum_processor_tokens=0,
+            validation=validation,
+        ),
+        audio=AudioInputSettings(
+            enabled=False,
+            formats=(),
+            mime_types=(),
+            transports=(),
+            maximum_items=0,
+            maximum_base64_characters=0,
+            maximum_file_bytes=0,
+            maximum_decoded_bytes=0,
+            maximum_duration_seconds=0.0,
+            maximum_frames=0,
+            sample_rates_hz=(),
+            channels=(),
+            sample_width_bytes=(),
+            maximum_processor_tokens=0,
+            validation=validation,
+        ),
+        mixed_media=MixedMediaSettings(
+            enabled=False,
+            maximum_total_items=0,
+            maximum_total_decoded_bytes=0,
+            maximum_processor_tokens=0,
+            validation=validation,
+        ),
+        promotion_evidence=None,
+    )
+
+
+def _load_multimodal(value: object) -> MultimodalSettings:
+    if value is None:
+        return _disabled_multimodal()
+    root = _object(value, "multimodal")
+    enabled = _boolean(root.get("enabled"), "multimodal.enabled")
+    if not enabled:
+        return _disabled_multimodal(
+            _integer(
+                root.get("maximum_request_bytes", 10_485_760),
+                "multimodal.maximum_request_bytes",
+            )
+        )
+
+    processor = _object(root.get("processor"), "multimodal.processor")
+    raw_assets = processor.get("assets")
+    if not isinstance(raw_assets, list) or not raw_assets:
+        raise ServingProfileError("multimodal.processor.assets must be a non-empty array")
+    image = _object(root.get("image"), "multimodal.image")
+    audio = _object(root.get("audio"), "multimodal.audio")
+    mixed = _object(root.get("mixed_media"), "multimodal.mixed_media")
+    raw_promotion = root.get("promotion_evidence")
+    promotion: PromotionEvidence | None = None
+    if raw_promotion is not None:
+        evidence = _object(raw_promotion, "multimodal.promotion_evidence")
+        promotion = PromotionEvidence(
+            attestation_sha256=_sha256(
+                evidence.get("attestation_sha256"),
+                "multimodal.promotion_evidence.attestation_sha256",
+            ),
+            attestation_payload_sha256=_sha256(
+                evidence.get("attestation_payload_sha256"),
+                "multimodal.promotion_evidence.attestation_payload_sha256",
+            ),
+            candidate_profile_sha256=_sha256(
+                evidence.get("candidate_profile_sha256"),
+                "multimodal.promotion_evidence.candidate_profile_sha256",
+            ),
+            serving_image_uri=_string(
+                evidence.get("serving_image_uri"),
+                "multimodal.promotion_evidence.serving_image_uri",
+            ),
+            responses_edge_image_uri=_string(
+                evidence.get("responses_edge_image_uri"),
+                "multimodal.promotion_evidence.responses_edge_image_uri",
+            ),
+            responses_edge_revision=_string(
+                evidence.get("responses_edge_revision"),
+                "multimodal.promotion_evidence.responses_edge_revision",
+            ),
+        )
+    return MultimodalSettings(
+        enabled=True,
+        scope=_string(root.get("scope"), "multimodal.scope"),
+        output_modalities=_strings(root.get("output_modalities"), "multimodal.output_modalities"),
+        maximum_request_bytes=_integer(
+            root.get("maximum_request_bytes"), "multimodal.maximum_request_bytes"
+        ),
+        maximum_context_tokens=_integer(
+            root.get("maximum_context_tokens"), "multimodal.maximum_context_tokens"
+        ),
+        minimum_text_context_reserve_tokens=_integer(
+            root.get("minimum_text_context_reserve_tokens"),
+            "multimodal.minimum_text_context_reserve_tokens",
+        ),
+        research_manifest=_manifest_pin(
+            root.get("research_manifest"), "multimodal.research_manifest"
+        ),
+        processor=ProcessorSettings(
+            assets=tuple(
+                _manifest_pin(item, f"multimodal.processor.assets[{index}]")
+                for index, item in enumerate(raw_assets)
+            ),
+            image_token_id=_integer(
+                processor.get("image_token_id"), "multimodal.processor.image_token_id"
+            ),
+            audio_token_id=_integer(
+                processor.get("audio_token_id"), "multimodal.processor.audio_token_id"
+            ),
+            image_placeholder=_string(
+                processor.get("image_placeholder"), "multimodal.processor.image_placeholder"
+            ),
+            audio_placeholder=_string(
+                processor.get("audio_placeholder"), "multimodal.processor.audio_placeholder"
+            ),
+            required_weight_prefixes=_strings(
+                processor.get("required_weight_prefixes"),
+                "multimodal.processor.required_weight_prefixes",
+            ),
+            image_patch_size=_integer(
+                processor.get("image_patch_size"),
+                "multimodal.processor.image_patch_size",
+            ),
+            image_rescale_factor=_number(
+                processor.get("image_rescale_factor"),
+                "multimodal.processor.image_rescale_factor",
+                minimum=1.0,
+            ),
+            image_rescale_max_upscaled_long_edge=_integer(
+                processor.get("image_rescale_max_upscaled_long_edge"),
+                "multimodal.processor.image_rescale_max_upscaled_long_edge",
+            ),
+            audio_token_duration_seconds=_number(
+                processor.get("audio_token_duration_seconds"),
+                "multimodal.processor.audio_token_duration_seconds",
+            ),
+            audio_samples_per_token=_integer(
+                processor.get("audio_samples_per_token"),
+                "multimodal.processor.audio_samples_per_token",
+            ),
+        ),
+        image=ImageInputSettings(
+            enabled=_boolean(image.get("enabled"), "multimodal.image.enabled"),
+            formats=_strings(image.get("formats"), "multimodal.image.formats"),
+            mime_types=_strings(image.get("mime_types"), "multimodal.image.mime_types"),
+            transports=_strings(image.get("transports"), "multimodal.image.transports"),
+            maximum_items=_integer(image.get("maximum_items"), "multimodal.image.maximum_items"),
+            maximum_base64_characters=_integer(
+                image.get("maximum_base64_characters"),
+                "multimodal.image.maximum_base64_characters",
+            ),
+            maximum_file_bytes=_integer(
+                image.get("maximum_file_bytes"),
+                "multimodal.image.maximum_file_bytes",
+            ),
+            maximum_decoded_bytes=_integer(
+                image.get("maximum_decoded_bytes"),
+                "multimodal.image.maximum_decoded_bytes",
+            ),
+            maximum_width=_integer(image.get("maximum_width"), "multimodal.image.maximum_width"),
+            maximum_height=_integer(image.get("maximum_height"), "multimodal.image.maximum_height"),
+            maximum_pixels=_integer(image.get("maximum_pixels"), "multimodal.image.maximum_pixels"),
+            maximum_decompression_ratio=_number(
+                image.get("maximum_decompression_ratio"),
+                "multimodal.image.maximum_decompression_ratio",
+                minimum=1.0,
+            ),
+            maximum_processor_tokens=_integer(
+                image.get("maximum_processor_tokens"),
+                "multimodal.image.maximum_processor_tokens",
+            ),
+            validation=_modality_validation(image.get("validation"), "multimodal.image.validation"),
+        ),
+        audio=AudioInputSettings(
+            enabled=_boolean(audio.get("enabled"), "multimodal.audio.enabled"),
+            formats=_strings(audio.get("formats"), "multimodal.audio.formats"),
+            mime_types=_strings(audio.get("mime_types"), "multimodal.audio.mime_types"),
+            transports=_strings(audio.get("transports"), "multimodal.audio.transports"),
+            maximum_items=_integer(audio.get("maximum_items"), "multimodal.audio.maximum_items"),
+            maximum_base64_characters=_integer(
+                audio.get("maximum_base64_characters"),
+                "multimodal.audio.maximum_base64_characters",
+            ),
+            maximum_file_bytes=_integer(
+                audio.get("maximum_file_bytes"),
+                "multimodal.audio.maximum_file_bytes",
+            ),
+            maximum_decoded_bytes=_integer(
+                audio.get("maximum_decoded_bytes"),
+                "multimodal.audio.maximum_decoded_bytes",
+            ),
+            maximum_duration_seconds=_number(
+                audio.get("maximum_duration_seconds"),
+                "multimodal.audio.maximum_duration_seconds",
+            ),
+            maximum_frames=_integer(audio.get("maximum_frames"), "multimodal.audio.maximum_frames"),
+            sample_rates_hz=_integers(
+                audio.get("sample_rates_hz"), "multimodal.audio.sample_rates_hz"
+            ),
+            channels=_integers(audio.get("channels"), "multimodal.audio.channels"),
+            sample_width_bytes=_integers(
+                audio.get("sample_width_bytes"), "multimodal.audio.sample_width_bytes"
+            ),
+            maximum_processor_tokens=_integer(
+                audio.get("maximum_processor_tokens"),
+                "multimodal.audio.maximum_processor_tokens",
+            ),
+            validation=_modality_validation(audio.get("validation"), "multimodal.audio.validation"),
+        ),
+        mixed_media=MixedMediaSettings(
+            enabled=_boolean(mixed.get("enabled"), "multimodal.mixed_media.enabled"),
+            maximum_total_items=_integer(
+                mixed.get("maximum_total_items"),
+                "multimodal.mixed_media.maximum_total_items",
+            ),
+            maximum_total_decoded_bytes=_integer(
+                mixed.get("maximum_total_decoded_bytes"),
+                "multimodal.mixed_media.maximum_total_decoded_bytes",
+            ),
+            maximum_processor_tokens=_integer(
+                mixed.get("maximum_processor_tokens"),
+                "multimodal.mixed_media.maximum_processor_tokens",
+            ),
+            validation=_modality_validation(
+                mixed.get("validation"), "multimodal.mixed_media.validation"
+            ),
+        ),
+        promotion_evidence=promotion,
+    )
 
 
 def _load_patches(value: object) -> tuple[RuntimePatch, ...]:
@@ -355,6 +914,150 @@ def _validate_invariants(profile: ServingProfile) -> None:
         raise ServingProfileError("KV allocation is below the projected batch-one requirement")
     if profile.validation.maximum_verified_model_len > profile.runtime.max_model_len:
         raise ServingProfileError("verified model length cannot exceed configured model length")
+    multimodal = profile.multimodal
+    if multimodal.scope != "image-audio-input-to-text-output":
+        raise ServingProfileError("multimodal.scope must be image-audio-input-to-text-output")
+    if multimodal.output_modalities != ("text",):
+        raise ServingProfileError("multimodal output_modalities must contain only text")
+    if multimodal.enabled == profile.runtime.language_model_only:
+        raise ServingProfileError(
+            "multimodal.enabled must be the inverse of runtime.language_model_only"
+        )
+    if not multimodal.enabled:
+        return
+    if not multimodal.image.enabled or not multimodal.audio.enabled:
+        raise ServingProfileError("multimodal profiles must enable image and audio independently")
+    if multimodal.research_manifest is None or multimodal.processor is None:
+        raise ServingProfileError(
+            "multimodal profiles require research_manifest and processor provenance"
+        )
+    patch_paths = {patch.path for patch in profile.patches}
+    required_multimodal_patches = {
+        "patches/vllm/0005-responses-input-audio-content.patch",
+        "patches/vllm/0006-inkling-multimodal-profile-bounds.patch",
+    }
+    if not required_multimodal_patches.issubset(patch_paths):
+        raise ServingProfileError(
+            "multimodal profiles require the Responses-audio and profiling-bound patches"
+        )
+    if multimodal.maximum_context_tokens != profile.runtime.max_model_len:
+        raise ServingProfileError("multimodal context limit must match runtime max_model_len")
+    if multimodal.minimum_text_context_reserve_tokens >= multimodal.maximum_context_tokens:
+        raise ServingProfileError("multimodal text context reserve exhausts the context window")
+    if multimodal.image.transports != ("data-url",):
+        raise ServingProfileError("initial image transport must be data-url only")
+    if multimodal.audio.transports != ("base64",):
+        raise ServingProfileError("initial audio transport must be base64 only")
+    if multimodal.image.maximum_base64_characters < (
+        4 * ((multimodal.image.maximum_file_bytes + 2) // 3)
+    ):
+        raise ServingProfileError("image base64 limit cannot encode the maximum file size")
+    if multimodal.audio.maximum_base64_characters < (
+        4 * ((multimodal.audio.maximum_file_bytes + 2) // 3)
+    ):
+        raise ServingProfileError("audio base64 limit cannot encode the maximum file size")
+    if multimodal.mixed_media.maximum_total_items < (
+        multimodal.image.maximum_items + multimodal.audio.maximum_items
+    ):
+        raise ServingProfileError("mixed-media item limit is below the per-modality limits")
+    processor_paths = [pin.path for pin in multimodal.processor.assets]
+    if len(processor_paths) != len(set(processor_paths)):
+        raise ServingProfileError("multimodal processor assets contain duplicate paths")
+    for pin in (*multimodal.processor.assets, multimodal.research_manifest):
+        relative = Path(pin.path)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ServingProfileError(f"unsafe multimodal provenance path: {pin.path!r}")
+    processor = multimodal.processor
+    if len(multimodal.audio.sample_rates_hz) != 1:
+        raise ServingProfileError("initial audio profile must pin exactly one sample rate")
+    sample_rate = multimodal.audio.sample_rates_hz[0]
+    expected_samples_per_token = processor.audio_token_duration_seconds * sample_rate
+    if (
+        not expected_samples_per_token.is_integer()
+        or int(expected_samples_per_token) != processor.audio_samples_per_token
+    ):
+        raise ServingProfileError("audio samples-per-token differs from preprocessing")
+    long_edge = max(multimodal.image.maximum_width, multimodal.image.maximum_height)
+    target_long_edge = min(
+        float(long_edge) * processor.image_rescale_factor,
+        float(max(processor.image_rescale_max_upscaled_long_edge, long_edge)),
+    )
+    ratio = target_long_edge / long_edge
+    processed_width = max(1, math.floor(multimodal.image.maximum_width * ratio + 0.5))
+    processed_height = max(1, math.floor(multimodal.image.maximum_height * ratio + 0.5))
+    image_tokens = (
+        (processed_height + processor.image_patch_size - 1) // processor.image_patch_size
+    ) * (processed_width // processor.image_patch_size + 1)
+    if image_tokens != multimodal.image.maximum_processor_tokens:
+        raise ServingProfileError("image processor-token limit differs from preprocessing")
+    audio_tokens = (
+        multimodal.audio.maximum_frames + processor.audio_samples_per_token - 1
+    ) // processor.audio_samples_per_token
+    if audio_tokens != multimodal.audio.maximum_processor_tokens:
+        raise ServingProfileError("audio processor-token limit differs from preprocessing")
+    for name, maximum in (
+        ("image", multimodal.image.maximum_processor_tokens),
+        ("audio", multimodal.audio.maximum_processor_tokens),
+        ("mixed_media", multimodal.mixed_media.maximum_processor_tokens),
+    ):
+        if maximum + multimodal.minimum_text_context_reserve_tokens >= (
+            multimodal.maximum_context_tokens
+        ):
+            raise ServingProfileError(
+                f"multimodal.{name} processor budget leaves no output-token capacity"
+            )
+    allowed_states = {"not-configured", "unvalidated", "validated", "failed"}
+    has_validated_modality = False
+    for name, evidence in (
+        ("image", multimodal.image.validation),
+        ("audio", multimodal.audio.validation),
+        ("mixed_media", multimodal.mixed_media.validation),
+    ):
+        states = (
+            evidence.status,
+            evidence.native_processor,
+            evidence.native_engine,
+            evidence.responses_api,
+            evidence.context_ladder,
+        )
+        if any(state not in allowed_states for state in states):
+            raise ServingProfileError(f"multimodal.{name}.validation contains an invalid state")
+        if evidence.maximum_verified_context_tokens > profile.runtime.max_model_len:
+            raise ServingProfileError(
+                f"multimodal.{name} verified context exceeds runtime max_model_len"
+            )
+        component_states = states[1:]
+        if evidence.status == "validated" and any(
+            state != "validated" for state in component_states
+        ):
+            raise ServingProfileError(
+                f"multimodal.{name} cannot be validated before every component gate"
+            )
+        if evidence.status == "validated" and evidence.maximum_verified_context_tokens <= 0:
+            raise ServingProfileError(
+                f"multimodal.{name} validated context maximum must be positive"
+            )
+        has_validated_modality = has_validated_modality or evidence.status == "validated"
+    if has_validated_modality and multimodal.promotion_evidence is None:
+        raise ServingProfileError(
+            "validated multimodal capability states require detached promotion evidence"
+        )
+    promotion = multimodal.promotion_evidence
+    if promotion is not None:
+        for field, uri in (
+            ("serving_image_uri", promotion.serving_image_uri),
+            ("responses_edge_image_uri", promotion.responses_edge_image_uri),
+        ):
+            prefix, separator, digest = uri.rpartition("@sha256:")
+            if (
+                not prefix
+                or not separator
+                or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise ServingProfileError(
+                    f"multimodal.promotion_evidence.{field} must be an immutable image URI"
+                )
 
 
 def load_serving_profile(path: Path) -> ServingProfile:
@@ -362,7 +1065,8 @@ def load_serving_profile(path: Path) -> ServingProfile:
 
     resolved = path.expanduser().resolve()
     try:
-        root = _object(json.loads(resolved.read_text()), "profile")
+        profile_bytes = resolved.read_bytes()
+        root = _object(json.loads(profile_bytes), "profile")
     except (OSError, json.JSONDecodeError) as exc:
         raise ServingProfileError(f"cannot load serving profile {resolved}: {exc}") from exc
 
@@ -379,6 +1083,7 @@ def load_serving_profile(path: Path) -> ServingProfile:
 
     profile = ServingProfile(
         path=resolved,
+        profile_sha256=hashlib.sha256(profile_bytes).hexdigest(),
         schema_version=_string(root.get("schema_version"), "schema_version"),
         kind=_string(root.get("kind"), "kind"),
         profile_id=_string(root.get("profile_id"), "profile_id"),
@@ -482,6 +1187,7 @@ def load_serving_profile(path: Path) -> ServingProfile:
             ),
             evidence=_string(projection.get("evidence"), "memory_projection.evidence"),
         ),
+        multimodal=_load_multimodal(root.get("multimodal")),
         patches=_load_patches(root.get("patches")),
     )
     _validate_invariants(profile)

@@ -1,0 +1,28 @@
+# Isolated public Responses edge for the multimodal bring-up profile.
+ARG PYTHON_IMAGE="python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c"
+FROM ${PYTHON_IMAGE}
+
+ARG SERVING_PROFILE_SOURCE="configs/serving/responses-2k-multimodal-bringup-v1.json"
+
+LABEL org.opencontainers.image.title="Inkling-Small Ampere multimodal Responses edge"
+LABEL org.opencontainers.image.description="Authenticated image/audio-input to text-output relay"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /opt/inkling/app
+
+COPY src ./src
+COPY configs/serving ./configs/serving
+COPY ${SERVING_PROFILE_SOURCE} ./configs/serving/active-multimodal-profile.json
+COPY manifests ./manifests
+
+ENV PYTHONPATH=/opt/inkling/app/src \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    INKLING_SERVING_PROFILE=/opt/inkling/app/configs/serving/active-multimodal-profile.json \
+    INKLING_VERTEX_PLAN=/opt/inkling/app/configs/serving/vertex-gate-e-plan-v1.json
+
+USER 65532:65532
+EXPOSE 8080
+
+ENTRYPOINT ["python", "-m", "inkling_ampere.serving.edge"]
+CMD ["--profile", "/opt/inkling/app/configs/serving/active-multimodal-profile.json", "--plan", "/opt/inkling/app/configs/serving/vertex-gate-e-plan-v1.json"]

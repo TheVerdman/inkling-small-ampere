@@ -20,8 +20,16 @@ Profiles are intentionally staged:
   later Magellan work. Its KV storage fits the measured Gate D headroom on
   paper, but long-prefill workspace, compilation, latency, and correctness
   remain unverified on A100.
+- `responses-2k-multimodal-bringup-v1.json` is an isolated image/audio-input
+  to text-output candidate. It enables both native towers, uses the additive
+  Responses input-audio and exact profiling-bound patches, pins processor assets
+  and the content-addressed research manifest, and publishes independent image,
+  audio, and mixed-media limits and validation states. It inherits no text
+  context evidence and remains unvalidated until the ordered
+  native/API/ladders/attestation path in `docs/multimodal-release-gate.md`
+  passes.
 
-All three profiles remain batch-one, use 512-token chunked prefill for long
+All profiles remain batch-one, use 512-token chunked prefill for long
 contexts, keep prefix caching/CUDA graphs/offload/speculation disabled, and
 allocate KV memory explicitly. Response storage is disabled: clients must
 send conversation state explicitly. vLLM's optional `previous_response_id`
@@ -37,9 +45,15 @@ INKLING_MODEL_PATH=/path/to/checkpoint \
   --dry-run
 ```
 
-An actual launch verifies the exact vLLM version, the four-patch marker baked
+An actual text launch verifies the exact vLLM version, the four-patch marker baked
 by `Dockerfile.serving`, and required checkpoint metadata before executing
 `vllm serve`.
+
+The separate `Dockerfile.serving-multimodal` verifies a six-patch marker,
+source and conversion identity, visual/audio tensor presence, processor asset
+hashes, research manifest, pinned torch-family packages, and base-image digest
+before allocating a GPU. `Dockerfile.edge-multimodal` keeps the public
+admission and Responses relay isolated from the proven text edge.
 
 `configs/evaluation/gate-e-long-context-v1.json` is the reviewed promotion
 ladder for the 256K candidate. `scripts/gcp/submit_vertex_long_context.sh` was

@@ -12,6 +12,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from inkling_ampere.evaluation.multimodal import (
+    load_research_manifest,
+    validate_manifest_against_profile,
+)
 from inkling_ampere.serving.profile import ServingProfile, load_serving_profile
 
 _DEFAULT_PATCHSET_MARKER = Path("/opt/inkling/runtime-patchset.json")
@@ -28,6 +32,70 @@ def _matches_reviewed_vllm_version(installed: str, required: str) -> bool:
         return False
     public, separator, local = installed.partition("+")
     return public == required and separator == "+" and bool(local)
+
+
+def verify_multimodal_runtime(profile: ServingProfile) -> dict[str, object]:
+    """Verify pinned media packages and base image without restoring a checkpoint."""
+
+    multimodal = profile.multimodal
+    if not multimodal.enabled:
+        return {
+            "schema_version": "1.0.0",
+            "kind": "inkling-multimodal-runtime-preflight",
+            "status": "not-applicable",
+        }
+    if multimodal.processor is None or multimodal.research_manifest is None:
+        raise RuntimeError("multimodal profile lacks processor or research provenance")
+    project_root = profile.path.parents[2]
+    research_path = project_root / multimodal.research_manifest.path
+    if not research_path.is_file():
+        raise RuntimeError(f"multimodal research manifest is missing: {research_path}")
+    observed_research_sha = _sha256_file(research_path)
+    if observed_research_sha != multimodal.research_manifest.sha256:
+        raise RuntimeError(
+            "multimodal research manifest mismatch: "
+            f"expected {multimodal.research_manifest.sha256}, "
+            f"observed {observed_research_sha}"
+        )
+    research = load_research_manifest(research_path)
+    validate_manifest_against_profile(research, research_path, profile)
+    reference = research["reference_runtime"]
+    if not isinstance(reference, dict):
+        raise RuntimeError("multimodal reference_runtime must be an object")
+    package_fields = {
+        "torch": "torch_version",
+        "torchaudio": "torchaudio_version",
+        "torchvision": "torchvision_version",
+        "transformers": "transformers_version",
+    }
+    versions: dict[str, str] = {}
+    for package, reference_field in package_fields.items():
+        try:
+            installed = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError as exc:
+            raise RuntimeError(f"multimodal runtime package is missing: {package}") from exc
+        expected = reference.get(reference_field)
+        if not isinstance(expected, str) or not _matches_reviewed_vllm_version(installed, expected):
+            raise RuntimeError(
+                f"multimodal runtime version mismatch for {package}: "
+                f"expected {expected!r}, observed {installed!r}"
+            )
+        versions[package] = installed
+    observed_base = os.environ.get("INKLING_SERVING_BASE_IMAGE_DIGEST")
+    expected_base = reference.get("serving_base_image_digest")
+    if observed_base != expected_base:
+        raise RuntimeError(
+            "serving base image provenance mismatch: "
+            f"expected {expected_base!r}, observed {observed_base!r}"
+        )
+    return {
+        "schema_version": "1.0.0",
+        "kind": "inkling-multimodal-runtime-preflight",
+        "status": "pass",
+        "research_manifest_sha256": observed_research_sha,
+        "serving_base_image_digest": observed_base,
+        "versions": versions,
+    }
 
 
 def verify_numeric_runtime() -> dict[str, object]:
@@ -191,6 +259,75 @@ def _verify_checkpoint_payload(
         print(f"Verified checkpoint artifact {index}/{len(records)}: {relative_path}", flush=True)
 
 
+def _verify_multimodal_checkpoint(
+    profile: ServingProfile,
+    model_path: Path,
+    manifest: dict[str, Any],
+) -> None:
+    """Bind processor assets and both tower families before GPU allocation."""
+
+    multimodal = profile.multimodal
+    if not multimodal.enabled:
+        return
+    if multimodal.processor is None or multimodal.research_manifest is None:
+        raise RuntimeError("multimodal profile lacks processor or research provenance")
+    assets = manifest.get("assets")
+    if not isinstance(assets, list):
+        raise RuntimeError("conversion manifest assets must be an array")
+    asset_digests = {
+        str(item.get("path")): str(item.get("output_sha256"))
+        for item in assets
+        if isinstance(item, dict)
+    }
+    for pin in multimodal.processor.assets:
+        if asset_digests.get(pin.path) != pin.sha256:
+            raise RuntimeError(
+                f"processor asset provenance mismatch for {pin.path}: "
+                f"expected {pin.sha256}, observed {asset_digests.get(pin.path)!r}"
+            )
+    index_path = model_path / "model.safetensors.index.json"
+    try:
+        index = json.loads(index_path.read_bytes())
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid checkpoint index {index_path}: {exc}") from exc
+    weight_map = index.get("weight_map") if isinstance(index, dict) else None
+    if not isinstance(weight_map, dict):
+        raise RuntimeError("checkpoint index weight_map must be an object")
+    tensor_names = tuple(str(name) for name in weight_map)
+    for prefix in multimodal.processor.required_weight_prefixes:
+        if not any(name.startswith(prefix) for name in tensor_names):
+            raise RuntimeError(f"checkpoint is missing multimodal tensor prefix {prefix!r}")
+    project_root = profile.path.parents[2]
+    research_path = project_root / multimodal.research_manifest.path
+    if not research_path.is_file():
+        raise RuntimeError(f"multimodal research manifest is missing: {research_path}")
+    observed_research_sha = _sha256_file(research_path)
+    if observed_research_sha != multimodal.research_manifest.sha256:
+        raise RuntimeError(
+            "multimodal research manifest mismatch: "
+            f"expected {multimodal.research_manifest.sha256}, "
+            f"observed {observed_research_sha}"
+        )
+    research = load_research_manifest(research_path)
+    validate_manifest_against_profile(research, research_path, profile)
+    reference = research["reference_runtime"]
+    if not isinstance(reference, dict):
+        raise RuntimeError("multimodal reference_runtime must be an object")
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        raise RuntimeError("conversion manifest source must be an object")
+    expected_source = {
+        "repository": reference.get("checkpoint_repository"),
+        "revision": reference.get("checkpoint_revision"),
+    }
+    for field, expected in expected_source.items():
+        if source.get(field) != expected:
+            raise RuntimeError(
+                f"conversion source {field} mismatch: expected {expected!r}, "
+                f"observed {source.get(field)!r}"
+            )
+
+
 def verify_runtime(
     profile: ServingProfile,
     model_path: Path,
@@ -201,6 +338,7 @@ def verify_runtime(
     """Fail before GPU allocation when the image or checkpoint is not the reviewed one."""
 
     verify_numeric_runtime()
+    verify_multimodal_runtime(profile)
     if not model_path.is_dir():
         raise RuntimeError(f"checkpoint directory does not exist: {model_path}")
     for required in ("config.json", "model.safetensors.index.json", "conversion-manifest.json"):
@@ -246,23 +384,24 @@ def verify_runtime(
         raise RuntimeError(f"cannot read runtime patch marker {marker_path}: {exc}") from exc
     if not isinstance(marker, dict):
         raise RuntimeError(f"runtime patch marker must be an object: {marker_path}")
+    if marker.get("schema_version") != "1.0.0":
+        raise RuntimeError("runtime patch marker schema version mismatch")
+    if marker.get("kind") != "inkling-vllm-runtime-patchset":
+        raise RuntimeError("runtime patch marker kind mismatch")
     if marker.get("vllm_version") != installed_vllm:
         raise RuntimeError(
             "runtime patch marker vLLM mismatch: "
             f"expected installed build {installed_vllm!r}, "
             f"observed {marker.get('vllm_version')!r}"
         )
-    observed = {
-        str(item.get("path")): str(item.get("sha256"))
-        for item in marker.get("patches", [])
-        if isinstance(item, dict)
-    }
-    expected = {patch.path: patch.sha256 for patch in profile.patches}
+    observed = marker.get("patches")
+    expected = [{"path": patch.path, "sha256": patch.sha256} for patch in profile.patches]
     if observed != expected:
         raise RuntimeError(
             f"runtime patch marker mismatch: expected {expected}, observed {observed}"
         )
     _verify_checkpoint_payload(model_path, manifest, cancelled=cancelled)
+    _verify_multimodal_checkpoint(profile, model_path, manifest)
 
 
 def build_environment(profile: ServingProfile) -> dict[str, str]:

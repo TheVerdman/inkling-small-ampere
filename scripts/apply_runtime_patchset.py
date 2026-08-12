@@ -31,6 +31,16 @@ PATCHSET: tuple[tuple[str, str], ...] = (
         "ea20b4ba86f637aadee228b5cf98ffdb1068be3dd62c31ad3c33ce0fd4792ff2",
     ),
 )
+MULTIMODAL_PATCHSET: tuple[tuple[str, str], ...] = PATCHSET + (
+    (
+        "patches/vllm/0005-responses-input-audio-content.patch",
+        "fa92f2ec707fd44d419db0ad9dd7f310b57f61521372c3e3cd8ccc451f71f714",
+    ),
+    (
+        "patches/vllm/0006-inkling-multimodal-profile-bounds.patch",
+        "0c4de7fa5f1cfbb004917f7fa6c56717c19d6f2aeed210eda0db0adeeba92ab2",
+    ),
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -56,9 +66,13 @@ def installed_vllm_root() -> Path:
     return package.parent
 
 
-def verified_patch_records(project_root: Path) -> list[dict[str, str]]:
+def verified_patch_records(
+    project_root: Path,
+    *,
+    patchset: tuple[tuple[str, str], ...] = PATCHSET,
+) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
-    for relative_path, expected_sha256 in PATCHSET:
+    for relative_path, expected_sha256 in patchset:
         patch_path = project_root / relative_path
         if not patch_path.is_file():
             raise RuntimeError(f"runtime patch is missing: {patch_path}")
@@ -77,10 +91,11 @@ def apply_runtime_patchset(
     project_root: Path,
     target_root: Path,
     marker: Path,
+    patchset: tuple[tuple[str, str], ...] = PATCHSET,
 ) -> dict[str, Any]:
     """Apply all runtime sections and write the fail-closed image marker."""
 
-    records = verified_patch_records(project_root)
+    records = verified_patch_records(project_root, patchset=patchset)
     applications: list[dict[str, object]] = []
     for record in records:
         results = apply_patch(
@@ -108,13 +123,18 @@ def main() -> int:
     parser.add_argument("--target-root", type=Path)
     parser.add_argument("--marker", type=Path, default=Path("/opt/inkling/runtime-patchset.json"))
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--multimodal", action="store_true")
     args = parser.parse_args()
 
     project_root = args.project_root.expanduser().resolve()
+    patchset = MULTIMODAL_PATCHSET if args.multimodal else PATCHSET
     if args.verify_only:
         print(
             json.dumps(
-                {"status": "pass", "patches": verified_patch_records(project_root)},
+                {
+                    "status": "pass",
+                    "patches": verified_patch_records(project_root, patchset=patchset),
+                },
                 indent=2,
                 sort_keys=True,
             )
@@ -130,6 +150,7 @@ def main() -> int:
         project_root=project_root,
         target_root=target_root,
         marker=args.marker.expanduser().resolve(),
+        patchset=patchset,
     )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0

@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from inkling_ampere.serving.media import MediaAdmissionError, validate_responses_media_request
 from inkling_ampere.serving.profile import load_serving_profile
 
 AsgiMessage = dict[str, Any]
@@ -41,6 +42,51 @@ class PadawanCapabilitiesMiddleware:
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
+
+    @staticmethod
+    def _error_body(message: str) -> bytes:
+        return json.dumps(
+            {"error": {"type": "invalid_request_error", "message": message}},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+    async def _validated_receive(self, receive: Receive) -> tuple[Receive | None, bytes | None]:
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message.get("type") == "http.disconnect":
+                return None, None
+            if message.get("type") != "http.request":
+                continue
+            chunk = message.get("body", b"")
+            if not isinstance(chunk, bytes):
+                return None, self._error_body("Responses request body must be bytes.")
+            body.extend(chunk)
+            if len(body) > self.profile.multimodal.maximum_request_bytes:
+                return None, self._error_body("Responses request exceeds the profile byte limit.")
+            if not message.get("more_body", False):
+                break
+        try:
+            request = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None, self._error_body("Responses request body must be valid UTF-8 JSON.")
+        if not isinstance(request, dict):
+            return None, self._error_body("Responses request body must be a JSON object.")
+        try:
+            validate_responses_media_request(request, self.profile.multimodal)
+        except MediaAdmissionError as exc:
+            return None, self._error_body(str(exc))
+        delivered = False
+
+        async def replay() -> AsgiMessage:
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return {"type": "http.disconnect"}
+
+        return replay, None
 
     @staticmethod
     async def _json_response(
@@ -92,5 +138,23 @@ class PadawanCapabilitiesMiddleware:
                 body=self.not_found_body,
                 head=method == "HEAD",
             )
+            return
+        if (
+            scope.get("type") == "http"
+            and path == self.profile.api.responses_route
+            and method == "POST"
+        ):
+            replay, error = await self._validated_receive(receive)
+            if error is not None:
+                await self._json_response(
+                    send,
+                    status=413 if b"byte limit" in error else 400,
+                    body=error,
+                    head=False,
+                )
+                return
+            if replay is None:
+                return
+            await self.app(scope, replay, send)
             return
         await self.app(scope, receive, send)

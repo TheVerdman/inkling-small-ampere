@@ -1,0 +1,271 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "inkling-multimodal-research-control",
+  "scope": "image-audio-input-to-text-output",
+  "audio_generation_in_scope": false,
+  "reference_runtime": {
+    "checkpoint_repository": "thinkingmachines/Inkling-Small",
+    "checkpoint_revision": "b2d4f225a02032c5d154bff748ab5a00c5ca26e4",
+    "conversion_plan_id": "conversion-e747e8121d5cd12c54c9",
+    "conversion_manifest_sha256": "210b62035668a17ba89ed08dc9eb224db2d6be48424a89cf655e341c23f38e71",
+    "vllm_version": "0.26.0",
+    "vllm_commit": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+    "serving_base_image_digest": "sha256:4d08193d2fd05aadb1b5678f93ae609efb2635df67da45f3efe781c368b34dc8",
+    "torch_version": "2.11.0",
+    "torchaudio_version": "2.11.0",
+    "torchvision_version": "0.26.0",
+    "transformers_version": "5.14.1",
+    "reference_precision": "bf16-towers-with-reviewed-w8a16-decoder"
+  },
+  "preprocessing": {
+    "implementation": "pinned-vllm-inkling-native-processor",
+    "image_patch_size": 40,
+    "image_rescale_factor": 2.0,
+    "image_rescale_max_upscaled_long_edge": 2048,
+    "image_patch_count_formula": "ceil(processed_height/40)*(floor(processed_width/40)+1)",
+    "image_color_mode": "RGB",
+    "image_mean": [0.48145466, 0.4578275, 0.40821073],
+    "image_std": [0.26862954, 0.2613026, 0.2757771],
+    "image_token_id": 200054,
+    "image_placeholder": "<|content_image|>",
+    "audio_sample_rate_hz": 16000,
+    "audio_seconds_per_token": 0.05,
+    "audio_samples_per_token": 800,
+    "audio_window_samples": 1600,
+    "audio_fft_samples": 1600,
+    "audio_mel_bins": 80,
+    "audio_discrete_mel_bins": 16,
+    "audio_dmel_min_value": -7.0,
+    "audio_dmel_max_value": 2.0,
+    "audio_token_id": 200053,
+    "audio_placeholder": "<|content_audio_input|>",
+    "processor_assets": [
+      {
+        "path": "processor_config.json",
+        "sha256": "b4a3962ea5f7ec39f40b5cf14e57ce99776c3dcce4756a110f7a169809e3a04c"
+      },
+      {
+        "path": "chat_template.jinja",
+        "sha256": "0aa1aa0c729d90176dcaa00c440c8faffca2957ffb2cc4b79456ee6d02bcf43b"
+      },
+      {
+        "path": "tokenizer_config.json",
+        "sha256": "2e36c9748a2081abb935b2e745ee22e82efa32589c2500df7e5bc0f93145cd77"
+      },
+      {
+        "path": "tokenizer.json",
+        "sha256": "9fb6333a7db8fe5da90728e741e4a3ee4ac2ae12c5dd4958cc6f31688787d3c2"
+      },
+      {
+        "path": "tiktoken/tokenizer.model",
+        "sha256": "bc253fd2b702f7a6da7105eaa8f3463b2f1247e83614f23e5323b921088bed2a"
+      }
+    ]
+  },
+  "fixture_generator": {
+    "implementation": "inkling_ampere.evaluation.multimodal",
+    "version": "1",
+    "png": "8-bit RGB, filter zero, zlib level 9, CRC-verified chunks",
+    "wav": "RIFF PCM, mono signed 16-bit little-endian"
+  },
+  "fixtures": [
+    {
+      "id": "image-pattern-40",
+      "modality": "image",
+      "recipe": {"kind": "rgb-lcg-png-v1", "width": 40, "height": 40, "seed": 17},
+      "bytes": 4908,
+      "sha256": "e050b5ee0ca8da55be807372d65f3bd139362dcea6197e2e92de718332930a85",
+      "metadata": {"mime_type": "image/png", "width": 40, "height": 40, "decoded_bytes": 4800, "processed_width": 80, "processed_height": 80, "expected_media_tokens_min": 6, "expected_media_tokens_max": 6, "expected_admission": "pass"}
+    },
+    {
+      "id": "image-pattern-160",
+      "modality": "image",
+      "recipe": {"kind": "rgb-lcg-png-v1", "width": 160, "height": 160, "seed": 17},
+      "bytes": 77048,
+      "sha256": "ab527a47cb64adf777e4bcc7b213181b5f0901bfc0b2c923f5644cde0dd1893c",
+      "metadata": {"mime_type": "image/png", "width": 160, "height": 160, "decoded_bytes": 76800, "processed_width": 320, "processed_height": 320, "expected_media_tokens_min": 72, "expected_media_tokens_max": 72, "expected_admission": "pass"}
+    },
+    {
+      "id": "image-pattern-640",
+      "modality": "image",
+      "recipe": {"kind": "rgb-lcg-png-v1", "width": 640, "height": 640, "seed": 17},
+      "bytes": 1229883,
+      "sha256": "c67d5f653cb88678913c51ecc95e6bf777c15a5031208b369c3fedee47efe84c",
+      "metadata": {"mime_type": "image/png", "width": 640, "height": 640, "decoded_bytes": 1228800, "processed_width": 1280, "processed_height": 1280, "expected_media_tokens_min": 1056, "expected_media_tokens_max": 1056, "expected_admission": "pass"}
+    },
+    {
+      "id": "image-pattern-800",
+      "modality": "image",
+      "recipe": {"kind": "rgb-lcg-png-v1", "width": 800, "height": 800, "seed": 17},
+      "bytes": 1921453,
+      "sha256": "2baba57836fc6bac83b32fbb419a827573bd5c37aa111e7007cf6aa6e639fdb4",
+      "metadata": {"mime_type": "image/png", "width": 800, "height": 800, "decoded_bytes": 1920000, "processed_width": 1600, "processed_height": 1600, "expected_media_tokens_min": 1640, "expected_media_tokens_max": 1640, "expected_admission": "pass"}
+    },
+    {
+      "id": "image-pattern-801x800",
+      "modality": "image",
+      "recipe": {"kind": "rgb-lcg-png-v1", "width": 801, "height": 800, "seed": 17},
+      "bytes": 1923853,
+      "sha256": "7eecc63d0c6f30ca70f1920801aea6a73f47454955d049ca2947c97890f42a4d",
+      "metadata": {"mime_type": "image/png", "width": 801, "height": 800, "decoded_bytes": 1922400, "expected_admission": "reject-resolution"}
+    },
+    {
+      "id": "image-red-160",
+      "modality": "image",
+      "recipe": {"kind": "solid-rgb-png-v1", "width": 160, "height": 160, "rgb": [255, 0, 0]},
+      "bytes": 318,
+      "sha256": "a67e91758dc547ce2d3d5fa48b64ea744197369a460d0db76bbb5b181b7f572c",
+      "metadata": {"mime_type": "image/png", "width": 160, "height": 160, "decoded_bytes": 76800, "processed_width": 320, "processed_height": 320, "expected_media_tokens_min": 72, "expected_media_tokens_max": 72, "expected_admission": "pass", "semantic_label": "red"}
+    },
+    {
+      "id": "image-blue-160",
+      "modality": "image",
+      "recipe": {"kind": "solid-rgb-png-v1", "width": 160, "height": 160, "rgb": [0, 0, 255]},
+      "bytes": 318,
+      "sha256": "78501ffe57b89b043ce29590b546a4d85b159a3bc381afbd2fba3bd3f764f828",
+      "metadata": {"mime_type": "image/png", "width": 160, "height": 160, "decoded_bytes": 76800, "processed_width": 320, "processed_height": 320, "expected_media_tokens_min": 72, "expected_media_tokens_max": 72, "expected_admission": "pass", "semantic_label": "blue"}
+    },
+    {
+      "id": "image-compression-ratio-800",
+      "modality": "image",
+      "recipe": {"kind": "solid-rgb-png-v1", "width": 800, "height": 800, "rgb": [0, 0, 0]},
+      "bytes": 1940,
+      "sha256": "c7bb7809667222efe40cec1bb6d43125b74efa865b3d9730d1b175829b7adf2b",
+      "metadata": {"mime_type": "image/png", "width": 800, "height": 800, "decoded_bytes": 1920000, "expected_admission": "reject-decompression-ratio"}
+    },
+    {
+      "id": "image-truncated",
+      "modality": "image",
+      "recipe": {"kind": "literal-hex-v1", "hex": "89504e470d0a1a0a0000000d49484452"},
+      "bytes": 16,
+      "sha256": "02a3e298f1533f62558c58e4c70edcab9af5a50d62d925fd5390942020fb0fb8",
+      "metadata": {"mime_type": "image/png", "expected_admission": "reject-malformed"}
+    },
+    {
+      "id": "audio-low-1s",
+      "modality": "audio",
+      "recipe": {"kind": "pcm-square-wav-v1", "frames": 16000, "sample_rate_hz": 16000, "period_samples": 40, "amplitude": 12000},
+      "bytes": 32044,
+      "sha256": "c3f0af3ef2e4537e6c76c0c68ee55f4742d142fbe855a68dc35724de550ec2a6",
+      "metadata": {"mime_type": "audio/wav", "frames": 16000, "duration_seconds": 1, "decoded_bytes": 32000, "expected_media_tokens_min": 20, "expected_media_tokens_max": 20, "expected_admission": "pass", "semantic_label": "low-pitch"}
+    },
+    {
+      "id": "audio-low-5s",
+      "modality": "audio",
+      "recipe": {"kind": "pcm-square-wav-v1", "frames": 80000, "sample_rate_hz": 16000, "period_samples": 40, "amplitude": 12000},
+      "bytes": 160044,
+      "sha256": "b00ab1dbc2546786c5c291776c1a31428cb04916539a822a27e8e83b64455685",
+      "metadata": {"mime_type": "audio/wav", "frames": 80000, "duration_seconds": 5, "decoded_bytes": 160000, "expected_media_tokens_min": 100, "expected_media_tokens_max": 100, "expected_admission": "pass", "semantic_label": "low-pitch"}
+    },
+    {
+      "id": "audio-low-15s",
+      "modality": "audio",
+      "recipe": {"kind": "pcm-square-wav-v1", "frames": 240000, "sample_rate_hz": 16000, "period_samples": 40, "amplitude": 12000},
+      "bytes": 480044,
+      "sha256": "da480b66cedcfd234229acbdb752990e0c583c5655ba6d65a8868d9f0ce5c39e",
+      "metadata": {"mime_type": "audio/wav", "frames": 240000, "duration_seconds": 15, "decoded_bytes": 480000, "expected_media_tokens_min": 300, "expected_media_tokens_max": 300, "expected_admission": "pass", "semantic_label": "low-pitch"}
+    },
+    {
+      "id": "audio-low-30s",
+      "modality": "audio",
+      "recipe": {"kind": "pcm-square-wav-v1", "frames": 480000, "sample_rate_hz": 16000, "period_samples": 40, "amplitude": 12000},
+      "bytes": 960044,
+      "sha256": "eb827ee35961c6956c5b17378454470e284053169f4cf062f447ea80db40c149",
+      "metadata": {"mime_type": "audio/wav", "frames": 480000, "duration_seconds": 30, "decoded_bytes": 960000, "expected_media_tokens_min": 600, "expected_media_tokens_max": 600, "expected_admission": "pass", "semantic_label": "low-pitch"}
+    },
+    {
+      "id": "audio-low-30s-plus-frame",
+      "modality": "audio",
+      "recipe": {"kind": "pcm-square-wav-v1", "frames": 480001, "sample_rate_hz": 16000, "period_samples": 40, "amplitude": 12000},
+      "bytes": 960046,
+      "sha256": "2df3dd6c54a8cb30d4e801964917b67fc651e102ebc73ee727737672174304a2",
+      "metadata": {"mime_type": "audio/wav", "frames": 480001, "duration_seconds": 30.0000625, "decoded_bytes": 960002, "expected_admission": "reject-duration"}
+    },
+    {
+      "id": "audio-high-5s",
+      "modality": "audio",
+      "recipe": {"kind": "pcm-square-wav-v1", "frames": 80000, "sample_rate_hz": 16000, "period_samples": 16, "amplitude": 12000},
+      "bytes": 160044,
+      "sha256": "5a47bb0011e2809cabb11d0cda9eba09413c93c6891caadb278c9f7c186171ce",
+      "metadata": {"mime_type": "audio/wav", "frames": 80000, "duration_seconds": 5, "decoded_bytes": 160000, "expected_media_tokens_min": 100, "expected_media_tokens_max": 100, "expected_admission": "pass", "semantic_label": "high-pitch"}
+    },
+    {
+      "id": "audio-malformed",
+      "modality": "audio",
+      "recipe": {"kind": "literal-hex-v1", "hex": "524946460400000057415645"},
+      "bytes": 12,
+      "sha256": "1fe5a351bf0314c8a1840b023fd1e4cab3f0f123468940c241bd7bf20e989ab8",
+      "metadata": {"mime_type": "audio/wav", "expected_admission": "reject-malformed"}
+    }
+  ],
+  "counterfactual_groups": [
+    {
+      "id": "image-color",
+      "fixture_ids": ["image-red-160", "image-blue-160"],
+      "prompt": "Name the dominant color using one word.",
+      "expected_labels": ["red", "blue"]
+    },
+    {
+      "id": "audio-pitch",
+      "fixture_ids": ["audio-low-5s", "audio-high-5s"],
+      "prompt": "Classify the tone as low-pitch or high-pitch.",
+      "expected_labels": ["low-pitch", "high-pitch"]
+    }
+  ],
+  "context_ladders": {
+    "image": [
+      {"rung": "smallest", "fixture_ids": ["image-pattern-40"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "typical", "fixture_ids": ["image-pattern-160"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "high", "fixture_ids": ["image-pattern-640"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "admission-boundary", "fixture_ids": ["image-pattern-800"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "one-above-admission", "fixture_ids": ["image-pattern-801x800"], "max_output_tokens": 64, "expected_result": "reject-before-engine"}
+    ],
+    "audio": [
+      {"rung": "smallest", "fixture_ids": ["audio-low-1s"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "typical", "fixture_ids": ["audio-low-5s"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "high", "fixture_ids": ["audio-low-15s"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "admission-boundary", "fixture_ids": ["audio-low-30s"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "one-above-admission", "fixture_ids": ["audio-low-30s-plus-frame"], "max_output_tokens": 64, "expected_result": "reject-before-engine"}
+    ],
+    "mixed_media": [
+      {"rung": "typical", "fixture_ids": ["image-pattern-160", "audio-low-5s"], "max_output_tokens": 64, "expected_result": "pass"},
+      {"rung": "high", "fixture_ids": ["image-pattern-640", "audio-low-15s"], "max_output_tokens": 64, "expected_result": "pass"}
+    ]
+  },
+  "adversarial_admission_fixture_ids": [
+    "image-pattern-801x800",
+    "image-compression-ratio-800",
+    "image-truncated",
+    "audio-low-30s-plus-frame",
+    "audio-malformed"
+  ],
+  "thresholds": {
+    "maximum_media_token_count_absolute_error": 1,
+    "counterfactual_distinct_output_fraction_min": 1.0,
+    "nonempty_text_response_fraction_min": 1.0,
+    "adversarial_rejection_fraction_min": 1.0,
+    "reference_answer_semantic_score_min": 0.8,
+    "minimum_free_hbm_bytes_after_request": 4294967296
+  },
+  "promotion_order": [
+    "native-processor",
+    "native-engine",
+    "responses-bridge",
+    "multimodal-context-ladders",
+    "release-aggregation"
+  ],
+  "required_release_provenance": [
+    "source_checkpoint",
+    "converted_checkpoint",
+    "processor_assets",
+    "research_manifest",
+    "serving_profile",
+    "vllm_commit",
+    "vllm_patchset",
+    "serving_image_uri",
+    "responses_edge_image_uri",
+    "responses_edge_revision",
+    "native_validator",
+    "responses_validator"
+  ]
+}
