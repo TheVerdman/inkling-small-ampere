@@ -4,10 +4,14 @@ Verdict: **the locally achievable platform is implemented and
 offline-validated. Real mechanistic findings remain unavailable until an
 explicitly authorized A100 campaign runs.**
 
-This work began from committed local default branch commit
-`a1626d4dcb4ca4052540c3038cf62b9bba438c9a` in the isolated worktree and branch
-`codex/mechanistic-interpretability`. The concurrent Padawan Capability Atlas
-worktree was neither read nor modified. No uncommitted content was imported.
+The original mechanistic implementation began from committed local default
+branch commit `a1626d4dcb4ca4052540c3038cf62b9bba438c9a` in the isolated worktree and
+branch `codex/mechanistic-interpretability`. During integration on 2026-08-12,
+that branch was rebased onto multimodal main commit
+`12a3878ebf66cae1602cf69f25815f637ac5ecaf` and local main was fast-forwarded.
+The original mechanistic task neither read nor modified the concurrent Padawan
+Capability Atlas worktree. Integration review handled Padawan independently;
+no Padawan content or uncommitted external files were imported into Inkling.
 
 ## Implemented machinery
 
@@ -53,12 +57,13 @@ worktree was neither read nor modified. No uncommitted content was imported.
 
 | Gate | Result |
 | --- | --- |
-| Ruff format | 122 files formatted |
+| Ruff format | 135 files formatted |
 | Ruff lint | pass |
-| strict mypy | 86 source/test files, zero issues |
-| pytest | 184 passed in 0.59 seconds |
+| strict mypy | 93 source/test files, zero issues |
+| pytest | 219 passed in 10.26 seconds |
 
-The focused mechanistic subset contains 62 tests. It exercises:
+These are combined-tree totals after the multimodal and mechanistic branches
+were reconciled. The focused mechanistic subset remains 62 tests. It exercises:
 
 - missing/unbounded/oversized selectors, nonexistent layers, modality
   overclaiming, and public tensor capture;
@@ -94,7 +99,13 @@ The focused mechanistic subset contains 62 tests. It exercises:
 - all five research-image runtime patch SHA-256 values verified while the
   default production patchset remained exactly four patches.
 
-Patch 0005 SHA-256 is
+`make multimodal-local-check` also passed on the combined tree. It verified the
+separate six-patch multimodal profile, all 16 media-admission fixtures, and the
+native-engine dry-run plan without initializing a GPU. The default four-patch,
+mechanistic five-patch, and multimodal six-patch variants are explicit; the two
+extension modes are mutually exclusive and fail closed if requested together.
+
+Mechanistic observer patch 0005 SHA-256 is
 `b27b2d2ca53e7f913bbcb35569ecfc6a43db29af4319afef91ceea164a2d1abf`.
 It applied to pinned upstream Inkling `model.py` with pre-patch SHA-256
 `34badc263b0e228ecbe013ef465b0ea1557bd7d458491522deffb854612d26c6`;
@@ -103,9 +114,9 @@ the patched source SHA-256 is
 The patch only adds an environment-gated function and two calls; when the
 variable is absent it returns before importing the observer.
 
-## GPU evidence
+## Mechanistic GPU evidence
 
-None was created by this task.
+None was created by the mechanistic task or this integration.
 
 - No GPU was provisioned or awakened.
 - No image was built, published, or pushed.
@@ -115,6 +126,11 @@ None was created by this task.
   `unavailable`, not offline-validated.
 - No causal effect, failure signature, expert specialization, quantization
   fidelity rate, or capability improvement is claimed for the actual model.
+
+The earlier multimodal TP4 attempt belongs to the integrated base and is
+documented separately in `docs/known-limitations.md`: it reached vLLM
+`LLM.chat` but stopped before audio decoding because PyAV was absent, and the
+Responses bridge was never deployed. That attempt is not mechanistic evidence.
 
 The exact A100 plan is content-addressed by canonical digest
 `d03e41cca69391fe4e8e7713965fcbab9f3e5cefdfd5c4338c1ae9b527ebffe2`
@@ -136,8 +152,9 @@ compute arithmetic, leaving `$56.178312` for contingency/storage.
 - The production observer automatically finalizes a reviewed single run at an
   exact decoder-logit call count. Multi-request campaigns should use the eager
   runner or a future server-side campaign coordinator with a new pinned patch.
-- Image/audio encoders, projection paths, and embedding swaps remain
-  unavailable pending validated paths. The hooks do not imply support.
+- Mechanistic image/audio telemetry, projection-path capture, and embedding
+  swaps remain unavailable pending validated adapters. The separate multimodal
+  serving path does not make these mechanistic selectors available.
 - Artifact format v1 uses standard-library zlib for a hermetic implementation;
   zstd is a measured future format revision, not a silent codec substitution.
 

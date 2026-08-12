@@ -3,12 +3,21 @@
   "kind": "mechanistic-platform-verification",
   "id": "mechanistic-platform-verification-20260812",
   "created_date": "2026-08-12",
-  "committed_base": "a1626d4dcb4ca4052540c3038cf62b9bba438c9a",
+  "committed_base": "12a3878ebf66cae1602cf69f25815f637ac5ecaf",
   "task_branch": "codex/mechanistic-interpretability",
   "workspace_isolation": {
-    "padawan_atlas_worktree_read": false,
-    "padawan_atlas_worktree_modified": false,
+    "original_task_padawan_atlas_worktree_read": false,
+    "original_task_padawan_atlas_worktree_modified": false,
+    "integration_review_padawan_repo_inspected": true,
+    "padawan_content_imported": false,
     "uncommitted_external_files_absorbed": false
+  },
+  "integration": {
+    "rebased_onto": "12a3878ebf66cae1602cf69f25815f637ac5ecaf",
+    "default_patch_count": 4,
+    "mechanistic_patch_count": 5,
+    "multimodal_patch_count": 6,
+    "extension_modes_mutually_exclusive": true
   },
   "identities": {
     "probe_set_seal_sha256": "4310b0fa310097adff60a749a0553a35bdd9a38788b46e93274b86302558d1c9",
@@ -43,15 +52,16 @@
   },
   "offline_validation": {
     "make_check": "pass",
-    "ruff_formatted_files": 122,
+    "ruff_formatted_files": 135,
     "ruff_lint": "pass",
-    "mypy_files": 86,
+    "mypy_files": 93,
     "mypy_issues": 0,
-    "pytest_collected": 184,
-    "pytest_passed": 184,
+    "pytest_collected": 219,
+    "pytest_passed": 219,
     "focused_mechanistic_tests": 62,
     "canonical_local_references_checked": 9,
     "mechanistic_offline_check": "pass",
+    "multimodal_local_check": "pass",
     "generated_schema_count": 7,
     "production_preflight_bytes_per_rank": 10522624,
     "production_preflight_bytes_tp4": 42090496,
@@ -89,7 +99,7 @@
     "image_build_or_publication": false,
     "endpoint_or_edge_mutation": false,
     "push": false,
-    "merge": false
+    "local_main_fast_forward": true
   },
   "scientific_hypotheses_tested": 0,
   "scientific_hypotheses_falsified": 0,
