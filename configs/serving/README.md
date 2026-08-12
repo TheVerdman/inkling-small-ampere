@@ -45,9 +45,14 @@ INKLING_MODEL_PATH=/path/to/checkpoint \
   --dry-run
 ```
 
-An actual text launch verifies the exact vLLM version, the four-patch marker baked
-by `Dockerfile.serving`, and required checkpoint metadata before executing
-`vllm serve`.
+An actual text launch verifies the exact vLLM version, the four-patch marker
+baked by the default `Dockerfile.serving` build, and required checkpoint
+metadata before executing `vllm serve`. These validated production profiles
+are deliberately unchanged by the mechanistic work. A separate
+`configs/mechanistic/serving/responses-2k-observer-v1.json` profile binds the
+optional mechanistic-observer patch. Building that research image requires the
+explicit build argument `INKLING_INCLUDE_MECHANISTIC_OBSERVER=1`; its real TP4
+path remains unvalidated.
 
 The separate `Dockerfile.serving-multimodal` verifies a six-patch marker,
 source and conversion identity, visual/audio tensor presence, processor asset

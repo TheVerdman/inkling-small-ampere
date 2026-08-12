@@ -9,7 +9,7 @@ DOCTOR_ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory multimodal-local-check vertex-gate-e-dry-run test lint format format-check typecheck check
+.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory multimodal-local-check mechanistic-offline-check vertex-gate-e-dry-run test lint format format-check typecheck check
 
 help:
 	@echo "Inkling-Small Ampere development commands"
@@ -19,6 +19,7 @@ help:
 	@echo "  make inspect-checkpoint  Read pinned checkpoint headers only"
 	@echo "  make model-memory   Project profiles and all four-rank placements"
 	@echo "  make multimodal-local-check  Verify media patches, fixtures, admission, and native dry run"
+	@echo "  make mechanistic-offline-check  Validate governed probes, capture profiles, schemas, and patch pins"
 	@echo "  make vertex-gate-e-dry-run  Render fail-closed Vertex, bootstrap, probe, and edge gates"
 	@echo "  make bootstrap      Install pinned uv locally and sync the dev environment"
 	@echo "  make check          Run hermetic formatting, lint, types, and tests"
@@ -61,6 +62,23 @@ multimodal-local-check:
 		--research-manifest manifests/multimodal-research-control-v1.json \
 		--dry-run \
 		--output /tmp/inkling-multimodal-native-dry-run.json
+
+mechanistic-offline-check:
+	PYTHONPATH=src $(PYTHON) -m inkling_ampere.mechanistic.cli validate-probeset \
+		configs/mechanistic/probesets/initial-local-v1.json
+	PYTHONPATH=src $(PYTHON) -m inkling_ampere.mechanistic.cli validate-profile \
+		configs/mechanistic/capture/production-observation-v1.json
+	PYTHONPATH=src $(PYTHON) -m inkling_ampere.mechanistic.cli validate-profile \
+		configs/mechanistic/capture/reference-rich-v1.json
+	PYTHONPATH=src $(PYTHON) -m inkling_ampere.mechanistic.cli audit-local-references \
+		configs/mechanistic/probesets/initial-local-v1.json \
+		configs/mechanistic/runs/production-observation-math-v1.json \
+		configs/mechanistic/runs/reference-eager-math-v1.json \
+		configs/mechanistic/interventions/expert-knockout-layer20-v1.json
+	PYTHONPATH=src $(PYTHON) scripts/generate_mechanistic_schemas.py \
+		--verify-index manifests/mechanistic-schema-index-v1.json
+	PYTHONPATH=src:. $(PYTHON) -m scripts.apply_runtime_patchset \
+		--verify-only --include-mechanistic-observer
 
 vertex-gate-e-dry-run:
 	PYTHONPATH=src $(GATE_E_PYTHON) scripts/render_vertex_gate_e.py

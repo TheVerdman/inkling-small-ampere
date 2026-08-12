@@ -32,12 +32,26 @@ As of the final bounded Gate E hotfix acceptance on 2026-08-10:
 - An isolated image/audio-input to text-output runtime, admission boundary,
   content-addressed fixture set, native-engine-first validator, Responses
   bridge validator, independent context ladders, and provenance aggregator are
-  implemented. Their local dry run passes, but no complete-checkpoint GPU or
-  live endpoint multimodal report exists yet; all checked-in image, audio, and
-  mixed-media capability states therefore remain unvalidated. Audio generation
-  is explicitly outside scope. Responses tools/reasoning events with media,
-  batching, concurrent-request behavior, prefix caching, CUDA graphs, MTP, and
-  LoRA remain untested on the complete checkpoint.
+  implemented. Their local dry run passes. A native TP4 attempt reached
+  `LLM.chat` but failed before audio decoding because the isolated image lacked
+  PyAV; the Responses bridge was never deployed. There is therefore no passing
+  complete-checkpoint or live-endpoint multimodal report, and all checked-in
+  image, audio, and mixed-media capability states remain unvalidated. Audio
+  generation is explicitly outside scope. Responses tools/reasoning events
+  with media, batching, concurrent-request behavior, prefix caching, CUDA
+  graphs, MTP, and LoRA remain untested on the complete checkpoint.
+- The mechanistic runtime, artifact format, treatments, analyses, and pinned
+  observer patch are offline-validated only. The observer has not captured the
+  real W8A16 checkpoint on TP4, so capture overhead, four-rank alignment, real
+  output equivalence, and every causal/quantization conclusion remain
+  unmeasured. The 495.382 GiB BF16 source does not fit four 80GB ranks; current
+  BF16 support is bounded one-component replay, not full-model generation.
+- Paged FlexAttention does not expose an exact score matrix through the current
+  production hook; attention capture is input/output or output-summary only.
+  Production fused MoE capture sees route state and aggregate routed/shared
+  outputs, not a separately materialized output for each expert. KV capture is
+  context/block metadata, not raw K/V. Image/audio hooks and embedding swaps
+  are unavailable until explicit modality validation publishes concrete paths.
 - The exact EOS-hotfix image passed live direct-Vertex Responses strict JSON in
   non-streaming and SSE modes plus ordinary SSE. The same image then passed
   exact strict-schema opening/middle/closing retrieval at 2K, 8K, 32K, 64K,

@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "intervention-manifest",
+  "id": "expert-knockout-layer20-v1",
+  "hypothesis": "Expert 17 at layer 20 contributes causally to modular-arithmetic success rather than merely correlating with it.",
+  "matched_control_run_ref": {
+    "schema_version": "1.0.0",
+    "kind": "mechanistic-run-manifest",
+    "id": "mech-run-reference-math-v1",
+    "sha256": "80761daecb8d915f44d100a25b6ca2da15a7c726fe5ec4f4b2b9fe693f7030bd",
+    "uri": "configs/mechanistic/runs/reference-eager-math-v1.json"
+  },
+  "seed": 20260812,
+  "interventions": [
+    {
+      "id": "knockout-expert17-layer20",
+      "kind": "expert-knockout",
+      "module_kind": "routing-weights",
+      "layers": [20],
+      "token_positions": [],
+      "expert_ids": [17],
+      "parameters": {
+        "renormalize": true,
+        "preserve_total_route_mass": true
+      },
+      "source_artifact_ref": null
+    }
+  ],
+  "execution_order": ["knockout-expert17-layer20"],
+  "safety_constraints": [
+    "Run only in the reference-eager treatment path.",
+    "Acquire a treatment lease after the matched control has finalized.",
+    "Restore every hook and verify parameter fingerprints before another run.",
+    "Stop if route mass is zero or an unsupported fused-kernel boundary is encountered."
+  ],
+  "effect_measures": [
+    "behavioral-verifier-score-difference",
+    "decoder-distribution-js-divergence",
+    "route-load-redistribution",
+    "matched-latency-delta"
+  ],
+  "expected_direction": "If causal, exact-answer verifier success and correct-token margin decrease under treatment relative to matched control.",
+  "modality_capabilities": {
+    "text": "offline-validated",
+    "image": "unavailable",
+    "audio": "unavailable"
+  }
+}

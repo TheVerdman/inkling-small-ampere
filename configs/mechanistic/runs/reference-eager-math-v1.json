@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "mechanistic-run-manifest",
+  "id": "mech-run-reference-math-v1",
+  "execution_path": "reference-eager",
+  "probe_set_ref": {
+    "schema_version": "1.0.0",
+    "kind": "mechanistic-probe-set",
+    "id": "inkling-mech-initial-local-v1",
+    "sha256": "f90cf5ca62ece63f97a771e1ac2ef48742945ee3da00a53068c13add1272bb9d",
+    "uri": "configs/mechanistic/probesets/initial-local-v1.json"
+  },
+  "capture_profile_ref": {
+    "schema_version": "1.0.0",
+    "kind": "telemetry-capture-profile",
+    "id": "inkling-mech-reference-rich-v1",
+    "sha256": "3a4838aa30a3ab5422af63263a90bff171beadbd93423cc65336fcb7290271f6",
+    "uri": "configs/mechanistic/capture/reference-rich-v1.json"
+  },
+  "identities": {
+    "checkpoint": {
+      "schema_version": "1.0.0",
+      "kind": "converted-checkpoint",
+      "id": "conversion-e747e8121d5cd12c54c9",
+      "sha256": "210b62035668a17ba89ed08dc9eb224db2d6be48424a89cf655e341c23f38e71",
+      "uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/conversions/conversion-e747e8121d5cd12c54c9/conversion-manifest.json"
+    },
+    "conversion": {
+      "schema_version": "1.0.0",
+      "kind": "conversion-evidence",
+      "id": "gate-d-reproducibility-20260801",
+      "sha256": "3980473712a76c8a37bd0f9b6ff8dd1236136406ccb18bf29b7a6231d527f6ce",
+      "uri": "manifests/gate-d-reproducibility-20260801.json"
+    },
+    "runtime": {
+      "schema_version": "1.0.0",
+      "kind": "runtime-source-reference",
+      "id": "vllm-ffd46bfab212",
+      "sha256": "471741984cb5f912b5905ec5dd4f4eb20e2b924fc9df516d9535a0852d551cae",
+      "uri": "manifests/runtime-source-reference.json"
+    },
+    "runtime_patchset": {
+      "schema_version": "1.0.0",
+      "kind": "mechanistic-runtime-patchset",
+      "id": "inkling-vllm-mechanistic-observer-v1",
+      "sha256": "6a0a90d2417e35793a7a64ec8579510f22d374bd5577f97b3cccc512b1ba4998",
+      "uri": "manifests/mechanistic/runtime-observer-patchset-v1.json"
+    },
+    "image": {
+      "schema_version": "1.0.0",
+      "kind": "planned-serving-image",
+      "id": "unbuilt-mech-observer-image-v1",
+      "sha256": "97e097e8d735eba109d85ffd72673d99ded98397f2b6c529595d0c605d4a8a5f",
+      "uri": "unbuilt://Dockerfile.serving+runtime-observer-patchset-v1"
+    },
+    "serving_profile": {
+      "schema_version": "1.0.0",
+      "kind": "serving-profile",
+      "id": "responses-2k-observer-v1",
+      "sha256": "ee3bf6c7fff65f0bd49f4928899d22c93e13c2d1bd468b7467effc8ea318bb94",
+      "uri": "configs/mechanistic/serving/responses-2k-observer-v1.json"
+    },
+    "prompt_payload": {
+      "schema_version": "1.0.0",
+      "kind": "materialized-prompt",
+      "id": "math-modular-v1",
+      "sha256": "9b572b0614034624f82a06b976add114198c8f323f946e128b60c412cdef64b5",
+      "uri": "probe://inkling-mech-initial-local-v1/math-modular-v1"
+    }
+  },
+  "seed": 20260812,
+  "hardware": {
+    "machine_type": "a2-ultragpu-4g",
+    "accelerator": "NVIDIA_A100_80GB",
+    "accelerator_count": 4,
+    "evidence_state": "unavailable",
+    "no_resource_provisioned": true
+  },
+  "tp": {
+    "world_size": 4,
+    "rank_order": [0, 1, 2, 3],
+    "barrier_policy": "pre-finalize-and-post-flush"
+  },
+  "batch_size": 1,
+  "transport": "offline-tokenized-eager",
+  "observation_only": true,
+  "completeness": "planned"
+}

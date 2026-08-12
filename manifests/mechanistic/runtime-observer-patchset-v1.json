@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "mechanistic-runtime-patchset",
+  "id": "inkling-vllm-mechanistic-observer-v1",
+  "status": "offline-validated",
+  "upstream": {
+    "repository": "https://github.com/vllm-project/vllm.git",
+    "revision": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+    "version": "0.26.0",
+    "inkling_model_source_sha256_before_patch": "34badc263b0e228ecbe013ef465b0ea1557bd7d458491522deffb854612d26c6",
+    "inkling_model_source_sha256_after_patchset": "2e022c7b99bca2614bcf96a0f42dead45c3322f318737ffc1b0b11438c343fee"
+  },
+  "patch": {
+    "path": "patches/vllm/0005-inkling-bounded-mechanistic-observer.patch",
+    "sha256": "b27b2d2ca53e7f913bbcb35569ecfc6a43db29af4319afef91ceea164a2d1abf",
+    "apply_order": 5,
+    "target": "vllm/models/inkling/nvidia/model.py",
+    "hunks": 2
+  },
+  "observer": {
+    "module": "inkling_ampere.mechanistic.vllm_observer",
+    "configuration_environment_variable": "INKLING_MECHANISTIC_OBSERVER_CONFIG",
+    "default_when_absent": "no-import-no-hook",
+    "transport": "responses-only",
+    "batch_size": 1,
+    "automatic_finalization_counter": "compute-logits-calls",
+    "output_contract": "wrapped methods return original objects by identity",
+    "intervention_surface": "none"
+  },
+  "offline_evidence": {
+    "unified_diff_applies_to_pinned_source": true,
+    "profile_preflight": true,
+    "output_identity_fixture": true,
+    "tp_rank_completeness_fixture": true,
+    "corrupt_chunk_detection_fixture": true
+  },
+  "gpu_evidence": {
+    "state": "unavailable",
+    "reason": "No GPU execution was authorized for this task."
+  },
+  "claims": {
+    "runtime_patch_applies": "offline-validated",
+    "observation_only_output_equivalence": "offline-validated",
+    "tp4_real_model_capture": "unavailable",
+    "production_equivalent_responses_capture": "unavailable"
+  }
+}

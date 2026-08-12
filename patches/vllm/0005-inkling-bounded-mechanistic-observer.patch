@@ -1,0 +1,38 @@
+diff --git a/vllm/models/inkling/nvidia/model.py b/vllm/models/inkling/nvidia/model.py
+index a8506d92327bc69275e4c75078885c891d445342..c3570c29b255e1036311654db7fac3f06d5a7b0f 100644
+--- a/vllm/models/inkling/nvidia/model.py
++++ b/vllm/models/inkling/nvidia/model.py
+@@ -456,12 +456,25 @@ class _TmlForCausalLMBase(nn.Module, SupportsPP, SupportsLoRA):
+         return _load_inkling_weights(self, weights, self.config)
+ 
+ 
++def _maybe_install_bounded_mechanistic_observer(model: nn.Module) -> None:
++    """Opt in to one fail-closed, profile-bounded Responses observation run."""
++    import os
++
++    config_path = os.environ.get("INKLING_MECHANISTIC_OBSERVER_CONFIG")
++    if config_path is None:
++        return
++    from inkling_ampere.mechanistic.vllm_observer import auto_install_from_file
++
++    auto_install_from_file(model, config_path)
++
++
+ class InklingForCausalLM(_TmlForCausalLMBase):
+     """Text-only entry point (``inkling_model`` checkpoints)."""
+ 
+     def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
+         super().__init__()
+         self._build(vllm_config, vllm_config.model_config.hf_config, prefix)
++        _maybe_install_bounded_mechanistic_observer(self)
+ 
+ 
+ @MULTIMODAL_REGISTRY.register_processor(
+@@ -510,6 +523,7 @@ class InklingForConditionalGeneration(_TmlForCausalLMBase, SupportsMultiModal):
+         )
+ 
+         self._build(vllm_config, config.text_config, prefix)
++        _maybe_install_bounded_mechanistic_observer(self)
+ 
+     # -- multimodal embedding -------------------------------------------
+ 

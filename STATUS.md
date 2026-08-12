@@ -1,8 +1,40 @@
 # Project status
 
-Last verified: 2026-08-10 01:52 EDT (2026-08-10 05:52 UTC)
+Last verified: 2026-08-12 (offline mechanistic platform validation)
 
 ## Executive state
+
+## Offline mechanistic research platform
+
+The repository now has versioned, content-addressed mechanistic ProbeSet,
+capture, run, activation-artifact, intervention, observation/result, and causal
+effect contracts. Bounded selectors fail before model load; per-rank artifacts
+stream checksummed chunks with explicit backpressure, sensitivity, retention,
+barrier, and partial/corrupt states. The runtime captures Inkling MoE routing,
+residual/attention/MLP/expert boundaries, decoder confidence, KV/context
+metadata, quantization metadata, and runtime identity. Fused attention matrices,
+raw KV tensors, and individual production fused-expert outputs are explicitly
+not claimed.
+
+The correctness-first eager path requires real checkpoints. Patch 0005 adds an
+environment-gated observer to both pinned Inkling vLLM entry points and is a
+no-import/no-hook return when disabled. An isolated research serving profile
+binds the five-patch identity; the three validated production profiles retain
+their existing four-patch identities. Causal treatment leases implement route
+treatments,
+activation patching/steering/ablation, readout bias, and bounded precision/scale
+counterfactuals while preventing controls from running before cleanup. CPU
+analyses cover router specialization, paired uncertainty/multiplicity, CKA,
+causal tracing, held-out failure probes, bounded sparse dictionary learning,
+and BF16/W8A16 first-divergence and route-flip-cascade localization.
+
+All of this evidence is offline. No observer image was built or published, no
+GPU was provisioned, no endpoint or edge was mutated, and no paid request ran.
+Real W8A16 TP4 capture, observation-only output equivalence on the deployed
+runtime, causal effects, and modality telemetry remain `unavailable`. The
+machine-readable A100 campaign is `not-authorized` and capped at a proposed 30
+node-hours, 500 GiB restricted raw data, and `$750` total authorization ceiling.
+Image/audio selectors remain fail-closed pending explicit validated adapters.
 
 ## Recovered hotfix and live GPU validation
 

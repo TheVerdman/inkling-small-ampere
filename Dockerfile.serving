@@ -6,6 +6,7 @@ FROM ${VLLM_IMAGE}
 ARG SCIPY_VERSION="1.13.1"
 ARG SCIPY_WHEEL="scipy-1.13.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
 ARG SCIPY_WHEEL_SHA256="de3ade0e53bc1f21358aa74ff4830235d716211d7d077e340c7349bc3542e884"
+ARG INKLING_INCLUDE_MECHANISTIC_OBSERVER="0"
 
 LABEL org.opencontainers.image.title="Inkling-Small Ampere Responses server"
 LABEL org.opencontainers.image.description="Pinned TP4 W8A16 OpenAI Responses service"
@@ -36,10 +37,17 @@ RUN /usr/bin/python3 -m pip install --no-deps .
 COPY patches ./patches
 COPY scripts/__init__.py scripts/apply_unified_diff.py scripts/apply_runtime_patchset.py ./scripts/
 COPY configs/serving ./configs/serving
+COPY configs/mechanistic/serving ./configs/mechanistic/serving
 
-RUN /usr/bin/python3 -m scripts.apply_runtime_patchset \
-    --project-root /opt/inkling/app \
-    --marker /opt/inkling/runtime-patchset.json
+RUN case "${INKLING_INCLUDE_MECHANISTIC_OBSERVER}" in \
+      0) observer_args="" ;; \
+      1) observer_args="--include-mechanistic-observer" ;; \
+      *) echo "INKLING_INCLUDE_MECHANISTIC_OBSERVER must be 0 or 1" >&2; exit 2 ;; \
+    esac \
+    && /usr/bin/python3 -m scripts.apply_runtime_patchset \
+        --project-root /opt/inkling/app \
+        --marker /opt/inkling/runtime-patchset.json \
+        ${observer_args}
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

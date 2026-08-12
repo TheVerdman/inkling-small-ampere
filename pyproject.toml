@@ -24,6 +24,7 @@ dependencies = [
 [project.scripts]
 inkling-doctor = "inkling_ampere.environment:main"
 inkling-inspect-checkpoint = "inkling_ampere.checkpoint.inventory:main"
+inkling-mech = "inkling_ampere.mechanistic.cli:main"
 
 [dependency-groups]
 dev = [

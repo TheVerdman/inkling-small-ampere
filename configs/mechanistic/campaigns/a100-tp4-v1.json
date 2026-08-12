@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "mechanistic-gpu-campaign",
+  "id": "inkling-mech-a100-tp4-v1",
+  "authorization_state": "not-authorized",
+  "provisioning_performed": false,
+  "target": {
+    "student": "Inkling-Small-Ampere W8A16 conversion-e747e8121d5cd12c54c9",
+    "source": "thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4",
+    "runtime": "vLLM@ffd46bfab2128bb84146050e98b51a617c6575ab",
+    "hardware": "one a2-ultragpu-4g with four NVIDIA A100 80GB GPUs",
+    "tensor_parallel_size": 4,
+    "batch_size": 1,
+    "transport": "Responses-only for production-equivalent stages",
+    "mutable_edge": "out-of-scope"
+  },
+  "rates_and_ceiling": {
+    "observed_node_rate_usd_per_hour": 23.1273896,
+    "maximum_node_hours": 30,
+    "compute_cost_ceiling_usd": 693.821688,
+    "contingency_and_storage_ceiling_usd": 56.178312,
+    "total_authorization_request_ceiling_usd": 750.0,
+    "billing_note": "Rate is repository-recorded full-rate arithmetic, not a settled quote. Stop before the ceiling."
+  },
+  "memory_contract": {
+    "measured_w8a16_local_weight_gib_per_rank": 64.54,
+    "kv_cache_gib_per_rank_smoke": 1.0,
+    "measured_post_generation_driver_free_gib_per_rank_approx": 11.44,
+    "telemetry_inflight_mib_per_rank": 8,
+    "minimum_driver_free_gib_per_rank": 6.0,
+    "maximum_peak_reserved_gib_per_rank": 73.0,
+    "bf16_full_model_tp4_feasible": false,
+    "bf16_reason": "The 495.382 GiB source payload cannot reside on four 80GB ranks at source precision.",
+    "bounded_bf16_plan": "Replay one restored BF16 layer/component at a time on captured matched inputs; never label this full-model BF16 generation."
+  },
+  "artifact_contract": {
+    "planned_node_spool": "/tmp/inkling-mechanistic-spool",
+    "planned_restricted_prefix": "gs://AUTHORIZED_BUCKET/inkling-small-ampere/mechanistic/v1",
+    "maximum_restricted_raw_gib": 500,
+    "maximum_public_aggregate_gib": 5,
+    "raw_retention_days": 14,
+    "compression": "zlib-6 chunks in v1; benchmark zstd before any format revision",
+    "rank_layout": "one independently checksummed artifact per TP rank plus a complete rank-set manifest",
+    "barrier_policy": "pre-finalize-and-post-flush",
+    "partial_policy": "Any absent rank, barrier failure, corrupt chunk, or alignment mismatch remains partial/corrupt and cannot be promoted."
+  },
+  "stages": [
+    {
+      "stage": 0,
+      "name": "offline-contract-and-fixture-gate",
+      "state": "offline-validated",
+      "probes": 12,
+      "generations": 0,
+      "node_hours_ceiling": 0,
+      "artifact_gib_ceiling": 0.1,
+      "capture": "Schemas, selector preflight, artifact corruption/rank tests, intervention isolation, analyses, patch application.",
+      "promotion_gate": "Full local repository validation passes."
+    },
+    {
+      "stage": 1,
+      "name": "tp4-observation-equivalence-smoke",
+      "state": "unavailable",
+      "probes": 4,
+      "generations": 8,
+      "conditions": ["observer-disabled-control", "statistics-observer-enabled"],
+      "seeds": [20260812],
+      "capture": "All-layer router selection; layers 2,10,20,30,41 residual/attention/MLP statistics; top-10 decoder confidence.",
+      "artifact_gib_ceiling": 2,
+      "node_hours_ceiling": 2,
+      "cost_ceiling_usd": 46.2547792,
+      "promotion_gate": "Exact token ids, step logprobs, finish reason, and response-text hash match every untreated control; four complete aligned ranks; overhead <25%."
+    },
+    {
+      "stage": 2,
+      "name": "matched-phenomenon-pilot",
+      "state": "unavailable",
+      "probes": 36,
+      "generations": 108,
+      "seeds": [20260812, 20260813, 20260814],
+      "capture": "Router stats on all 40 MoE layers; rich tensors on candidate layers selected only from half of probes; confidence/KV trajectories.",
+      "layer_sampling": {
+        "router_statistics": "layers 2-41",
+        "tensor_scout": [2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 41],
+        "token_sampling": "all generated tokens <=64; stratified 64 prompt positions"
+      },
+      "artifact_gib_ceiling": 60,
+      "node_hours_ceiling": 5,
+      "cost_ceiling_usd": 115.636948,
+      "promotion_gate": "Candidate effects replicate in held-out ProbeSet groups after Benjamini-Hochberg correction; no train/held-out group leakage."
+    },
+    {
+      "stage": 3,
+      "name": "quantization-fidelity-and-first-divergence",
+      "state": "unavailable",
+      "probes": 24,
+      "w8a16_generations": 72,
+      "bf16_full_generations": 0,
+      "bounded_component_replays": 768,
+      "capture": "Matched W8A16 traces plus one-at-a-time BF16 replay at first-divergence candidates; logits/routes/margins/residual drift/verifier linkage.",
+      "artifact_gib_ceiling": 120,
+      "node_hours_ceiling": 7,
+      "cost_ceiling_usd": 161.8917272,
+      "promotion_gate": "Requests are token-identical; first divergence localized; numerical noise separated from route-flip cascades; component restoration stays above 6 GiB driver-free headroom."
+    },
+    {
+      "stage": 4,
+      "name": "causal-tracing-and-interventions",
+      "state": "unavailable",
+      "discovery_candidates": 16,
+      "heldout_candidates": 8,
+      "matched_probe_pairs_per_candidate": 12,
+      "generations": 576,
+      "capture": "Expert knockout/attenuation/reroute, activation patching, output ablation, steering, and selected precision restoration with fresh matched controls.",
+      "artifact_gib_ceiling": 240,
+      "node_hours_ceiling": 11,
+      "cost_ceiling_usd": 254.4012856,
+      "promotion_gate": "Treatment lease cleanup passes; effect CI excludes zero on held-out pairs; verifier regressions and unrelated capability guardrails remain within preregistered limits."
+    },
+    {
+      "stage": 5,
+      "name": "long-context-trajectories",
+      "state": "unavailable",
+      "probes": 18,
+      "context_targets": [2048, 8192, 32768, 65536],
+      "generations": 72,
+      "capture": "Statistics-only router, residual projection, KV/block metadata, and confidence at stratified prompt positions; no full residual tensors.",
+      "artifact_gib_ceiling": 40,
+      "node_hours_ceiling": 5,
+      "cost_ceiling_usd": 115.636948,
+      "promotion_gate": "No telemetry OOM, silent drop, rank skew, or >30% latency overhead; retrieval and integration remain separately verified."
+    }
+  ],
+  "global_stop_conditions": [
+    "Any output difference in stage 1 observation-only controls.",
+    "Any unpinned runtime, kernel, image, checkpoint, conversion, prompt, or profile identity.",
+    "Any TP rank missing, duplicated, misaligned, or failing either barrier.",
+    "Any telemetry artifact budget, spool capacity, or 500 GiB raw campaign ceiling breach.",
+    "Any rank below 6 GiB driver-free memory or above 73 GiB peak reserved memory.",
+    "Any non-finite activation/logit, CUDA OOM, kernel fallback, generation error, or corrupt chunk.",
+    "Any treatment hook remaining active when a control starts or failing exact parameter restoration.",
+    "Any image/audio request before the corresponding validation capability is GPU-validated.",
+    "Any compute arithmetic reaching the authorized dollar ceiling."
+  ],
+  "explicitly_deferred": [
+    "Full end-to-end BF16 generation on TP4.",
+    "Image/audio encoder or projection claims until Multimodal Validation publishes supported paths.",
+    "Cloud provisioning, image publication, endpoint mutation, or paid execution without new explicit authorization."
+  ]
+}

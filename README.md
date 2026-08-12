@@ -14,6 +14,14 @@ prompts. The exact hotfix image also passed live strict-JSON Responses and the
 2K, 8K, 32K, 64K, 128K, and 240K retrieval ladder on one production-shaped
 Vertex replica. See [STATUS.md](STATUS.md) for the exact evidence and scope.
 
+The repository now also contains an **offline-validated mechanistic research
+platform**: bounded MoE/router, residual, attention/MLP/expert, logit, KV, and
+quantization telemetry; content-addressed restricted artifacts; manifest-bound
+causal interventions; held-out analyses; a correctness-first reference path;
+and an opt-in pinned-vLLM observer. The observer has not run on the real TP4
+checkpoint, so no GPU mechanistic or production-equivalence claim is promoted.
+See [Mechanistic interpretability runtime](docs/mechanistic-platform.md).
+
 Gate E now provides a fail-closed, **Responses-only** serving contract with 2K
 bring-up, 64K fallback, and 256K-configured candidate profiles. Serving quota
 is verified at exactly four custom-model A100 80GB GPUs. The immutable
@@ -55,6 +63,13 @@ Set up the pinned local toolchain:
 make bootstrap
 . .venv/bin/activate
 make check
+```
+
+Validate the mechanistic contracts, governed probes, capture budgets, generated
+schemas, and patch pins without loading a model or touching a GPU:
+
+```bash
+make PYTHON=.venv/bin/python mechanistic-offline-check
 ```
 
 Read every source safetensors header without downloading tensor payloads:
@@ -165,6 +180,10 @@ Key durable outputs:
 - [Thirteen-point runtime trace](docs/runtime-compatibility.md)
 - [Gate B representative-execution decision](docs/gate-b-decision.md)
 - [Gate E Responses operationalization](docs/gate-e-operationalization.md)
+- [Mechanistic interpretability runtime](docs/mechanistic-platform.md)
+- [Padawan/Capability Atlas interchange](docs/padawan-mechanistic-interchange.md)
+- [W8A16 mechanistic fidelity program](docs/mechanistic-quantization-program.md)
+- [Bounded A100 mechanistic campaign](docs/mechanistic-gpu-campaign.md)
 - `manifests/gate-d-reproducibility-20260801.json`
 - [Confirmed SM80 attention blocker](results/reports/ampere-attention-blocker.md)
 - [Ampere relative-attention repair design](docs/ampere-attention-design.md)

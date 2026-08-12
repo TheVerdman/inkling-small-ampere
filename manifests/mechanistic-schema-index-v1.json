@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "mechanistic-schema-index",
+  "id": "mechanistic-schema-index-v1",
+  "generator": {
+    "module": "src/inkling_ampere/mechanistic/schema.py",
+    "sha256": "0d9b212e41cf2c5f0f8a202c57a3506606db7ab7dcc5049ff91fdc418d598032",
+    "entrypoint": "scripts/generate_mechanistic_schemas.py",
+    "entrypoint_sha256": "582c1fa209fa453aab632b51739a48dfb77bc740d9bb0264f06a64bcfe5d3369"
+  },
+  "artifacts": [
+    {
+      "path": "manifests/schemas/mechanistic/v1/activation-artifact-manifest.schema.json",
+      "sha256": "ba6315e8ed81f3bb865c3e5af6d61b80e508dff286b42040c8aa47a70028e349"
+    },
+    {
+      "path": "manifests/schemas/mechanistic/v1/causal-effect-summary.schema.json",
+      "sha256": "bfc301777c8b0d5fcbbd15ee447c1c710ecf874e30fa349941d299fe69c96d1c"
+    },
+    {
+      "path": "manifests/schemas/mechanistic/v1/intervention-manifest.schema.json",
+      "sha256": "28992dd4fbf50dd7400ce16cdc28bde74d8e65f7bc7638df6aa3d0ed23a433ac"
+    },
+    {
+      "path": "manifests/schemas/mechanistic/v1/mechanistic-observation-result.schema.json",
+      "sha256": "8870a59ef1b824c440c64c3d1897035b3a47b59d914eb13a99d3d39212442913"
+    },
+    {
+      "path": "manifests/schemas/mechanistic/v1/mechanistic-probe-set.schema.json",
+      "sha256": "6d1945ccdaf947ffdbd178804d0e49201d587b4b3d83eea58e5bfb7a9bdb4cac"
+    },
+    {
+      "path": "manifests/schemas/mechanistic/v1/mechanistic-run-manifest.schema.json",
+      "sha256": "6f1d6769c3d1e10e74266b76b8e23cc9dd38b3f17887fc710726c31e268b374b"
+    },
+    {
+      "path": "manifests/schemas/mechanistic/v1/telemetry-capture-profile.schema.json",
+      "sha256": "0e28bbac63d518352f35f49377051028050ed02695340700e32320ef1006b70f"
+    }
+  ]
+}

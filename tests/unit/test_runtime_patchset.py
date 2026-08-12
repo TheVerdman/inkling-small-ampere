@@ -2,8 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from inkling_ampere.serving.profile import load_serving_profile
-from scripts.apply_runtime_patchset import MULTIMODAL_PATCHSET, PATCHSET, verified_patch_records
+from scripts.apply_runtime_patchset import (
+    MECHANISTIC_OBSERVER_PATCHSET,
+    MULTIMODAL_PATCHSET,
+    PATCHSET,
+    selected_patchset,
+    verified_patch_records,
+)
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -44,6 +52,16 @@ def test_multimodal_patchset_is_additive_and_matches_isolated_profile() -> None:
     assert "test_inkling_dummy_inputs_honor_explicit_serving_bounds" in profile_bounds_patch
 
 
+def test_runtime_extension_variants_are_explicit_and_mutually_exclusive() -> None:
+    observer_patchset = (*PATCHSET, *MECHANISTIC_OBSERVER_PATCHSET)
+
+    assert selected_patchset() == PATCHSET
+    assert selected_patchset(multimodal=True) == MULTIMODAL_PATCHSET
+    assert selected_patchset(include_mechanistic_observer=True) == observer_patchset
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        selected_patchset(multimodal=True, include_mechanistic_observer=True)
+
+
 def test_serving_image_applies_patchset_and_defaults_to_safe_profile() -> None:
     dockerfile = (_ROOT / "Dockerfile.serving").read_text()
     research_dockerfile = (_ROOT / "Dockerfile").read_text()
@@ -60,6 +78,9 @@ def test_serving_image_applies_patchset_and_defaults_to_safe_profile() -> None:
     assert "scipy.optimize import linear_sum_assignment" in dockerfile
     assert "RUN /usr/bin/python3 -m pip install --no-deps ." in dockerfile
     assert "/usr/bin/python3 -m scripts.apply_runtime_patchset" in dockerfile
+    assert 'ARG INKLING_INCLUDE_MECHANISTIC_OBSERVER="0"' in dockerfile
+    assert "--include-mechanistic-observer" in dockerfile
+    assert "configs/mechanistic/serving" in dockerfile
     assert "responses-2k-bringup-v1.json" in dockerfile
     assert 'ENTRYPOINT ["/usr/bin/python3", "-m", "inkling_ampere.serving.bootstrap"]' in dockerfile
     assert "COPY results" not in dockerfile

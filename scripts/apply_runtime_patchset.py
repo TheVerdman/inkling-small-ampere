@@ -42,6 +42,13 @@ MULTIMODAL_PATCHSET: tuple[tuple[str, str], ...] = PATCHSET + (
     ),
 )
 
+MECHANISTIC_OBSERVER_PATCHSET: tuple[tuple[str, str], ...] = (
+    (
+        "patches/vllm/0005-inkling-bounded-mechanistic-observer.patch",
+        "b27b2d2ca53e7f913bbcb35569ecfc6a43db29af4319afef91ceea164a2d1abf",
+    ),
+)
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -66,13 +73,41 @@ def installed_vllm_root() -> Path:
     return package.parent
 
 
+def selected_patchset(
+    *,
+    patchset: tuple[tuple[str, str], ...] | None = None,
+    multimodal: bool = False,
+    include_mechanistic_observer: bool = False,
+) -> tuple[tuple[str, str], ...]:
+    """Select one explicit runtime variant without silently combining research paths."""
+
+    if patchset is not None:
+        if multimodal or include_mechanistic_observer:
+            raise ValueError("an explicit patchset cannot be combined with variant flags")
+        return patchset
+    if multimodal and include_mechanistic_observer:
+        raise ValueError("multimodal and mechanistic-observer patchsets are mutually exclusive")
+    if multimodal:
+        return MULTIMODAL_PATCHSET
+    if include_mechanistic_observer:
+        return (*PATCHSET, *MECHANISTIC_OBSERVER_PATCHSET)
+    return PATCHSET
+
+
 def verified_patch_records(
     project_root: Path,
     *,
-    patchset: tuple[tuple[str, str], ...] = PATCHSET,
+    patchset: tuple[tuple[str, str], ...] | None = None,
+    multimodal: bool = False,
+    include_mechanistic_observer: bool = False,
 ) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
-    for relative_path, expected_sha256 in patchset:
+    selected = selected_patchset(
+        patchset=patchset,
+        multimodal=multimodal,
+        include_mechanistic_observer=include_mechanistic_observer,
+    )
+    for relative_path, expected_sha256 in selected:
         patch_path = project_root / relative_path
         if not patch_path.is_file():
             raise RuntimeError(f"runtime patch is missing: {patch_path}")
@@ -91,11 +126,21 @@ def apply_runtime_patchset(
     project_root: Path,
     target_root: Path,
     marker: Path,
-    patchset: tuple[tuple[str, str], ...] = PATCHSET,
+    patchset: tuple[tuple[str, str], ...] | None = None,
+    multimodal: bool = False,
+    include_mechanistic_observer: bool = False,
 ) -> dict[str, Any]:
     """Apply all runtime sections and write the fail-closed image marker."""
 
-    records = verified_patch_records(project_root, patchset=patchset)
+    selected = selected_patchset(
+        patchset=patchset,
+        multimodal=multimodal,
+        include_mechanistic_observer=include_mechanistic_observer,
+    )
+    records = verified_patch_records(
+        project_root,
+        patchset=selected,
+    )
     applications: list[dict[str, object]] = []
     for record in records:
         results = apply_patch(
@@ -109,6 +154,8 @@ def apply_runtime_patchset(
         "schema_version": "1.0.0",
         "kind": "inkling-vllm-runtime-patchset",
         "vllm_version": importlib.metadata.version("vllm"),
+        "multimodal_included": selected == MULTIMODAL_PATCHSET,
+        "mechanistic_observer_included": selected == (*PATCHSET, *MECHANISTIC_OBSERVER_PATCHSET),
         "patches": records,
         "applications": applications,
     }
@@ -124,16 +171,23 @@ def main() -> int:
     parser.add_argument("--marker", type=Path, default=Path("/opt/inkling/runtime-patchset.json"))
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--multimodal", action="store_true")
+    parser.add_argument("--include-mechanistic-observer", action="store_true")
     args = parser.parse_args()
 
     project_root = args.project_root.expanduser().resolve()
-    patchset = MULTIMODAL_PATCHSET if args.multimodal else PATCHSET
+    selected = selected_patchset(
+        multimodal=args.multimodal,
+        include_mechanistic_observer=args.include_mechanistic_observer,
+    )
     if args.verify_only:
         print(
             json.dumps(
                 {
                     "status": "pass",
-                    "patches": verified_patch_records(project_root, patchset=patchset),
+                    "multimodal_included": selected == MULTIMODAL_PATCHSET,
+                    "mechanistic_observer_included": selected
+                    == (*PATCHSET, *MECHANISTIC_OBSERVER_PATCHSET),
+                    "patches": verified_patch_records(project_root, patchset=selected),
                 },
                 indent=2,
                 sort_keys=True,
@@ -150,7 +204,8 @@ def main() -> int:
         project_root=project_root,
         target_root=target_root,
         marker=args.marker.expanduser().resolve(),
-        patchset=patchset,
+        multimodal=args.multimodal,
+        include_mechanistic_observer=args.include_mechanistic_observer,
     )
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0

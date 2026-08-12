@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "behavioral-phenomenon-catalog",
+  "id": "inkling-mech-internal-phenomena-v1",
+  "authority": "local-governed-fixture-only",
+  "atlas_status": "pending-external-cross-review",
+  "phenomena": [
+    {
+      "id": "long-context-exact-retrieval",
+      "description": "Recover exact isolated facts at controlled context positions."
+    },
+    {
+      "id": "long-context-fact-integration",
+      "description": "Combine separated facts into a deterministic derived answer."
+    },
+    {
+      "id": "multistep-deterministic-reasoning",
+      "description": "Solve mathematical or scientific chains with exact answers."
+    },
+    {
+      "id": "instruction-conflict-structured-output",
+      "description": "Honor precedence and a strict output schema under distractors."
+    },
+    {
+      "id": "offline-tool-planning-recovery",
+      "description": "Choose abstract tools and a recovery branch without executing them."
+    },
+    {
+      "id": "paraphrase-minimal-pair-stability",
+      "description": "Hold semantics fixed across paraphrase and minimal perturbation."
+    },
+    {
+      "id": "reasoning-effort-length-stability",
+      "description": "Vary observable requested effort/length with the answer held fixed."
+    },
+    {
+      "id": "future-media-grounding-counterfactual",
+      "description": "Reserved for validated image/audio paths; unavailable in this fixture."
+    }
+  ],
+  "behavioral_verifier_authority": "padawan-or-explicit-local-fixture",
+  "mechanistic_evidence_may_replace_behavioral_verifier": false
+}
