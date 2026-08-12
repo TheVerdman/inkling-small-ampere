@@ -1034,7 +1034,7 @@ def validate_vertex_plan(plan: dict[str, Any], *, repository_root: Path) -> None
         False,
         "edge stream validation",
     )
-    _expect(external.get("upstream_transport"), "vertex-v1beta1-invoke-raw-httpbody", "edge")
+    _expect(external.get("upstream_transport"), "vertex-v1-dedicated-invoke-raw-httpbody", "edge")
     _expect(
         external.get("upstream_request_encoding"),
         "raw-application-json-with-inkling-strict-schema-adapter",

@@ -55,8 +55,8 @@ def _external_settings(plan: dict[str, Any]) -> dict[str, Any]:
         "contract": "openai-responses-only",
         "edge_module": "inkling_ampere.serving.edge",
         "incoming_secret_env": "INKLING_EDGE_API_KEY",
-        "upstream_transport": "vertex-v1beta1-invoke-raw-httpbody",
-        "upstream_request_encoding": ("raw-application-json-with-inkling-strict-schema-adapter"),
+        "upstream_transport": "vertex-v1-dedicated-invoke-raw-httpbody",
+        "upstream_request_encoding": "raw-application-json-with-inkling-strict-schema-adapter",
         "upstream_response_encoding": "raw-upstream-content-type-and-bytes",
         "maximum_public_request_bytes": 10_485_760,
         "upstream_timeout_seconds": 3600,
@@ -72,17 +72,20 @@ def _external_settings(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_invoke_request(body: bytes, content_type: str) -> bytes:
-    """Build the raw Vertex Invoke body and adapt strict Inkling JSON schemas.
+    """Build the raw v1 dedicated-Endpoint Invoke body and adapt strict schemas.
 
-    Vertex's ``google.api.HttpBody`` transcoding expects the public request bytes
-    directly on the wire. vLLM's plain JSON grammar begins after Inkling's hidden
-    ``<|content_text|>`` boundary, but the model may then emit one
+    The official ``Endpoint.invoke`` transport sends the original bytes directly
+    to ``/v1/{endpoint}/invoke/{container_path}``. The v1beta1 Invoke RPC instead
+    presents ``InvokeRequest.httpBody`` to the container, which vLLM rejects
+    because ``input`` is not top-level. vLLM's plain JSON grammar begins after
+    Inkling's hidden ``<|content_text|>`` boundary, but the model may then emit one
     ``<|begin_of_text|>`` control token. Representing that optional token in an
     internal structural grammar preserves the public OpenAI ``text.format``
     contract while keeping the JSON Schema itself strict.
     """
 
-    if content_type.split(";", 1)[0].strip().lower() != "application/json":
+    normalized_content_type = content_type.split(";", 1)[0].strip().lower()
+    if normalized_content_type != "application/json":
         raise EdgeRequestError("Content-Type must be application/json.")
     try:
         request = json.loads(body)
@@ -159,7 +162,7 @@ def build_invoke_request(body: bytes, content_type: str) -> bytes:
 
 
 def invoke_url(dedicated_dns: str, endpoint_resource: str = _ENDPOINT_RESOURCE) -> str:
-    """Build the exact v1beta1 dedicated-Endpoint Invoke URL."""
+    """Build the exact raw v1 dedicated-Endpoint Invoke URL."""
 
     parsed = urlsplit(dedicated_dns)
     expected_prefix = "inkling-small-responses-gate-e.us-central1-"
@@ -175,7 +178,7 @@ def invoke_url(dedicated_dns: str, endpoint_resource: str = _ENDPOINT_RESOURCE) 
         raise EdgeConfigurationError("dedicated Endpoint DNS is outside the reviewed target")
     if endpoint_resource != _ENDPOINT_RESOURCE:
         raise EdgeConfigurationError("Vertex Endpoint resource differs from the reviewed target")
-    return dedicated_dns.rstrip("/") + "/v1beta1/" + endpoint_resource + "/invoke/v1/responses"
+    return dedicated_dns.rstrip("/") + "/v1/" + endpoint_resource + "/invoke/v1/responses"
 
 
 def bearer_authorized(header: str | None, expected_secret: str) -> bool:

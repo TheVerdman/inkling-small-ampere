@@ -549,7 +549,7 @@
     "live_streaming_responses_validated": false,
     "required_vertex_permission": "aiplatform.endpoints.predict",
     "required_secret_permission": "secretmanager.versions.access",
-    "upstream_transport": "vertex-v1beta1-invoke-raw-httpbody",
+    "upstream_transport": "vertex-v1-dedicated-invoke-raw-httpbody",
     "upstream_request_encoding": "raw-application-json-with-inkling-strict-schema-adapter",
     "upstream_response_encoding": "raw-upstream-content-type-and-bytes",
     "maximum_public_request_bytes": 10485760,

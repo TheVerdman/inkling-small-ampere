@@ -50,13 +50,13 @@ class _FakeClient:
         return self.response
 
 
-def test_invoke_raw_body_and_target_are_exact() -> None:
+def test_invoke_raw_body_and_v1_target_are_exact() -> None:
     payload = b'{"model":"w8a16-balanced-v1","stream":true}'
     assert build_invoke_request(payload, "application/json") == payload
 
     dns = "https://inkling-small-responses-gate-e.us-central1-123.prediction.vertexai.goog"
     assert invoke_url(dns).endswith(
-        "/v1beta1/projects/project-49b1b523-d248-434f-bd4/locations/us-central1/"
+        "/v1/projects/project-49b1b523-d248-434f-bd4/locations/us-central1/"
         "endpoints/inkling-small-responses-gate-e/invoke/v1/responses"
     )
     with pytest.raises(EdgeConfigurationError, match="outside the reviewed target"):

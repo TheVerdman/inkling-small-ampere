@@ -222,19 +222,18 @@ transport/auth adapter only: it must not translate to Chat Completions or
 reinterpret Responses payloads. See the official [custom-container
 guide](https://docs.cloud.google.com/vertex-ai/docs/predictions/use-custom-container),
 [online inference guide](https://docs.cloud.google.com/vertex-ai/docs/predictions/get-online-predictions),
-and [Invoke reference](https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1beta1/projects.locations.endpoints.invoke/invoke).
+and the official [Endpoint.invoke SDK implementation](https://github.com/googleapis/python-aiplatform/blob/main/google/cloud/aiplatform/models.py).
 
-The reviewed upstream call is the v1beta1
-`POST v1beta1/{endpoint}/invoke/{invokeId}` method. Its request wraps the
-original content type and base64 body in `InvokeRequest.httpBody`; its response
-is an HTTP body. The edge therefore serves the two GET documents from the
-pinned profile, wraps only the POST transport, and forwards the returned JSON
-or SSE bytes without translating the Responses protocol. It sends no automatic
+The reviewed upstream call is the raw v1 dedicated-Endpoint path used by the
+official SDK: `POST /v1/{endpoint}/invoke/{container_path}`. The original body
+bytes and content type are sent directly. The v1beta1 Invoke RPC is not
+interchangeable: it presents an `InvokeRequest.httpBody` envelope to this custom
+container, which is incompatible with vLLM's OpenAI request models. The edge
+therefore serves the two GET documents from the pinned profile, adapts only the
+strict structured-output extension when needed, and forwards returned JSON or
+SSE bytes without translating the Responses protocol. It sends no automatic
 upstream retry, because replaying a generation request can duplicate work or
-events. The direct Invoke POST path is now live-validated for JSON and SSE on
-the exact hotfix image. A retained consumer edge serving the two ordinary GET
-routes and relaying this POST path is still absent and therefore remains
-unvalidated.
+events.
 
 The reviewed edge target is one Cloud Run service in `us-central1`, packaged
 by the separate pinned `Dockerfile.edge`. It scales from zero to at most one
@@ -502,8 +501,8 @@ sets `mutation_performed`, `cloud_command_executed`, and
 `payloads_executable` to false. The second report exercises the container
 bootstrap configuration without inspecting a live filesystem or importing
 vLLM. The first report also renders the profile-derived GET documents and the
-base64 `InvokeRequest.httpBody` template for `POST /v1/responses`; the upstream
-URL now uses the dedicated Endpoint DNS observed during v2. The bootstrap
+raw application-JSON body for `POST /v1/responses`; the upstream URL now uses
+the v1 dedicated-Endpoint Invoke path and DNS observed during v2. The bootstrap
 report now uses the promoted `/tmp/inkling-small-ampere` path. The first report
 retains the completed v5 image and execution record but marks the probe
 authorization consumed and non-executable. It renders corrected production

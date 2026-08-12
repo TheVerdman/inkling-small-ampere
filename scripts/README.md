@@ -22,9 +22,9 @@ contract, Responses-only routes, no-retry controls, and public compute-price
 observation. It renders Model upload, dedicated Endpoint creation, and
 DeployModel request bodies but never sends them; its output is deliberately
 non-executable and lists every unresolved input and approval phase. It also
-renders the profile-derived GET documents and the v1beta1
-`InvokeRequest.httpBody` template for the Responses edge, using the dedicated
-Endpoint DNS observed during the successful v2 diagnostic deployment.
+renders the profile-derived GET documents and raw application-JSON body for
+the v1 dedicated-Endpoint Invoke route, using the DNS observed during the
+successful v2 diagnostic deployment.
 
 The renderer also emits the exact local-build/Artifact Registry publication
 sequence, including the pre-cloud 50 GiB size stop and local container dry

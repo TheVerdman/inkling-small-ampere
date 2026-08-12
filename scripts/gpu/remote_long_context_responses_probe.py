@@ -73,9 +73,11 @@ def vertex_invoke_body_adapter(route: str, public_body: bytes) -> bytes:
             f"public request is {len(public_body)} bytes; Vertex limit is "
             f"{_MAX_VERTEX_REQUEST_BYTES}"
         )
-    if route != "/v1/responses":
-        return public_body
-    adapted = build_invoke_request(public_body, "application/json")
+    adapted = (
+        build_invoke_request(public_body, "application/json")
+        if route == "/v1/responses"
+        else public_body
+    )
     if len(adapted) > _MAX_VERTEX_REQUEST_BYTES:
         raise ProbeError(
             f"adapted request is {len(adapted)} bytes; Vertex limit is {_MAX_VERTEX_REQUEST_BYTES}"
