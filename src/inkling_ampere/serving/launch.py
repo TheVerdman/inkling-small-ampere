@@ -408,6 +408,9 @@ def build_environment(profile: ServingProfile) -> dict[str, str]:
     environment = dict(os.environ)
     environment["INKLING_SERVING_PROFILE"] = str(profile.path)
     environment["LAMPORT_RS_SCONV"] = "0"
+    environment["VLLM_MARLIN_USE_ATOMIC_ADD"] = (
+        "1" if profile.runtime.marlin_use_atomic_add else "0"
+    )
     environment["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
     environment["VLLM_ENABLE_RESPONSES_API_STORE"] = (
         "1" if profile.api.response_store_enabled else "0"
@@ -453,6 +456,7 @@ def main() -> int:
                         for key in (
                             "INKLING_SERVING_PROFILE",
                             "LAMPORT_RS_SCONV",
+                            "VLLM_MARLIN_USE_ATOMIC_ADD",
                             "VLLM_WORKER_MULTIPROC_METHOD",
                             "VLLM_ENABLE_RESPONSES_API_STORE",
                         )

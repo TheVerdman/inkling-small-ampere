@@ -65,6 +65,8 @@ class RuntimeSettings:
     reasoning_parser: str
     tool_call_parser: str
     enable_auto_tool_choice: bool
+    performance_mode: str
+    marlin_use_atomic_add: bool
     seed: int
 
 
@@ -379,6 +381,7 @@ class ServingProfile:
             "runtime": {
                 "vllm_version": self.runtime.vllm_version,
                 "vllm_commit": self.runtime.vllm_commit,
+                "performance_mode": self.runtime.performance_mode,
                 "tensor_parallel_size": self.runtime.tensor_parallel_size,
                 "dtype": self.runtime.dtype,
                 "max_model_len": self.runtime.max_model_len,
@@ -388,6 +391,11 @@ class ServingProfile:
                 "prefix_caching": self.runtime.enable_prefix_caching,
                 "chunked_prefill": self.runtime.enable_chunked_prefill,
                 "async_scheduling": self.runtime.async_scheduling,
+                "eager_execution": self.runtime.enforce_eager,
+                "compilation_requested": not self.runtime.enforce_eager,
+                "cuda_graph_capture_requested": not self.runtime.enforce_eager,
+                "custom_all_reduce_requested": not self.runtime.disable_custom_all_reduce,
+                "marlin_use_atomic_add": self.runtime.marlin_use_atomic_add,
                 "language_model_only": self.runtime.language_model_only,
             },
             "validation": {
@@ -903,8 +911,48 @@ def _validate_invariants(profile: ServingProfile) -> None:
         raise ServingProfileError("max_num_batched_tokens cannot exceed max_model_len")
     if profile.runtime.max_model_len > 2_048 and not profile.runtime.enable_chunked_prefill:
         raise ServingProfileError("long-context profiles require chunked prefill")
-    if profile.runtime.max_model_len > 2_048 and profile.runtime.max_num_seqs != 1:
+    performance_modes = {
+        "conservative",
+        "agent-latency-candidate",
+        "atlas-stability-baseline",
+        "atlas-throughput-candidate",
+        "long-context-latency-candidate",
+    }
+    if profile.runtime.performance_mode not in performance_modes:
+        raise ServingProfileError(
+            "runtime.performance_mode must be one of " + ", ".join(sorted(performance_modes))
+        )
+    if (
+        profile.runtime.performance_mode == "conservative"
+        and profile.runtime.max_model_len > 2_048
+        and profile.runtime.max_num_seqs != 1
+    ):
         raise ServingProfileError("unvalidated long-context profiles must remain batch-one")
+    if profile.runtime.performance_mode != "conservative" and profile.status != (
+        "projected-unvalidated"
+    ):
+        raise ServingProfileError("performance candidates must remain projected-unvalidated")
+    if profile.runtime.performance_mode == "agent-latency-candidate" and (
+        profile.runtime.max_model_len > 65_536 or profile.runtime.max_num_seqs > 2
+    ):
+        raise ServingProfileError("agent latency candidates are limited to 64K and two sequences")
+    if profile.runtime.performance_mode in {
+        "atlas-stability-baseline",
+        "atlas-throughput-candidate",
+    } and (profile.runtime.max_model_len > 32_768 or profile.runtime.max_num_seqs < 2):
+        raise ServingProfileError(
+            "Atlas profiles require multiple sequences and at most 32K context"
+        )
+    if profile.runtime.performance_mode == "long-context-latency-candidate" and (
+        profile.runtime.max_model_len <= 65_536 or profile.runtime.max_num_seqs != 1
+    ):
+        raise ServingProfileError(
+            "long-context latency candidates require batch one and more than 64K context"
+        )
+    if profile.runtime.marlin_use_atomic_add:
+        raise ServingProfileError(
+            "Marlin atomic-add reduction is ineffective for BF16 on the A100 SM80 contract"
+        )
     if profile.memory_projection.allocated_kv_cache_bytes != profile.runtime.kv_cache_memory_bytes:
         raise ServingProfileError("memory projection must match runtime KV allocation")
     if (
@@ -1164,6 +1212,14 @@ def load_serving_profile(path: Path) -> ServingProfile:
             tool_call_parser=_string(runtime.get("tool_call_parser"), "runtime.tool_call_parser"),
             enable_auto_tool_choice=_boolean(
                 runtime.get("enable_auto_tool_choice"), "runtime.enable_auto_tool_choice"
+            ),
+            performance_mode=_string(
+                runtime.get("performance_mode", "conservative"),
+                "runtime.performance_mode",
+            ),
+            marlin_use_atomic_add=_boolean(
+                runtime.get("marlin_use_atomic_add", False),
+                "runtime.marlin_use_atomic_add",
             ),
             seed=_integer(runtime.get("seed"), "runtime.seed", minimum=0),
         ),

@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "inkling-responses-serving-profile",
+  "profile_id": "responses-32k-atlas-candidate-v1",
+  "status": "projected-unvalidated",
+  "description": "Responses-only A100 continuous-batching candidate for independent Capability Atlas trial lanes.",
+  "model": {
+    "served_model_name": "w8a16-balanced-v1",
+    "checkpoint_id": "conversion-e747e8121d5cd12c54c9",
+    "quantization": "w8a16-balanced-v1",
+    "artifact_uri": "gs://project-49b1b523-d248-434f-bd4-vecl-qb-artifacts/inkling-small-ampere/conversions/conversion-e747e8121d5cd12c54c9",
+    "conversion_manifest_sha256": "210b62035668a17ba89ed08dc9eb224db2d6be48424a89cf655e341c23f38e71"
+  },
+  "api": {
+    "primary_protocol": "responses",
+    "routes": {
+      "models": "/v1/models",
+      "responses": "/v1/responses",
+      "capabilities": "/v1/padawan/capabilities"
+    },
+    "streaming": {
+      "terminal_event": "response.completed"
+    },
+    "structured_outputs": {
+      "json_schema": true
+    },
+    "response_store": {
+      "enabled": false
+    },
+    "chat_completions_contract": false
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "runtime": {
+    "vllm_version": "0.26.0",
+    "vllm_commit": "ffd46bfab2128bb84146050e98b51a617c6575ab",
+    "tensor_parallel_size": 4,
+    "expert_parallel_size": 1,
+    "dtype": "bfloat16",
+    "tokenizer_mode": "inkling",
+    "max_model_len": 32768,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 512,
+    "block_size": 16,
+    "kv_cache_memory_bytes": 4294967296,
+    "cpu_offload_gib": 0,
+    "enforce_eager": false,
+    "enable_prefix_caching": true,
+    "enable_chunked_prefill": true,
+    "async_scheduling": true,
+    "language_model_only": true,
+    "disable_custom_all_reduce": false,
+    "distributed_executor_backend": "mp",
+    "reasoning_parser": "inkling",
+    "tool_call_parser": "inkling",
+    "enable_auto_tool_choice": true,
+    "performance_mode": "atlas-throughput-candidate",
+    "marlin_use_atomic_add": false,
+    "seed": 20260730
+  },
+  "validation": {
+    "model_runtime": "candidate-unvalidated",
+    "responses_api": "candidate-unvalidated",
+    "long_context": "candidate-unvalidated",
+    "maximum_verified_model_len": 2048
+  },
+  "memory_projection": {
+    "estimated_required_kv_cache_bytes": 3693871104,
+    "allocated_kv_cache_bytes": 4294967296,
+    "evidence": "Hybrid-cache projection admits either sixteen approximately 2K active sequences or eight full 32K sequences with a 512-token chunk bound; max_num_seqs is an admission ceiling, not a promise that sixteen full 32K sequences fit simultaneously. Compilation and CUDA-graph workspace still require live measurement."
+  },
+  "patches": [
+    {
+      "path": "patches/vllm/0001-inkling-sm80-flex-relative-attention.patch",
+      "sha256": "ebf3ecce3183796f07927a536ee0f05c4b9f1c9244c77a54dfbc51ef40444e96"
+    },
+    {
+      "path": "patches/vllm/0002-inkling-fused-wna16-loader.patch",
+      "sha256": "bfff68f0e15be7c072e213682aa5c1044f2179ea3d066fc50448d39b5e894516"
+    },
+    {
+      "path": "patches/vllm/0003-marlin-moe-w13-group-scale-k-dimension.patch",
+      "sha256": "3b051d4ed02a7eb6eda5c0f0b65cfb445b7e9ee8d8aa78ce4c40a62ad350d7c0"
+    },
+    {
+      "path": "patches/vllm/0004-inkling-model-eos-structured-output.patch",
+      "sha256": "ea20b4ba86f637aadee228b5cf98ffdb1068be3dd62c31ad3c33ce0fd4792ff2"
+    }
+  ]
+}

@@ -165,6 +165,51 @@ def test_valid_multimodal_request_is_replayed_to_vllm(monkeypatch: MonkeyPatch) 
     assert received == [{"type": "http.request", "body": body, "more_body": False}]
 
 
+def test_replayed_request_preserves_the_real_disconnect_channel(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("INKLING_SERVING_PROFILE", str(_PROFILE))
+    body = json.dumps(
+        {"model": "w8a16-balanced-v1", "input": "stream this response"},
+        separators=(",", ":"),
+    ).encode()
+    source_messages = iter(
+        (
+            {"type": "http.request", "body": body, "more_body": False},
+            {"type": "http.disconnect"},
+        )
+    )
+    source_receive_calls = 0
+    received: list[dict[str, Any]] = []
+
+    async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        received.append(await receive())
+        received.append(await receive())
+
+    async def receive() -> dict[str, Any]:
+        nonlocal source_receive_calls
+        source_receive_calls += 1
+        return next(source_messages)
+
+    async def send(message: dict[str, Any]) -> None:
+        raise AssertionError(f"unexpected send: {message}")
+
+    middleware = PadawanCapabilitiesMiddleware(app)
+    asyncio.run(
+        middleware(
+            {"type": "http", "path": "/v1/responses", "method": "POST"},
+            receive,
+            send,
+        )
+    )
+
+    assert source_receive_calls == 2
+    assert received == [
+        {"type": "http.request", "body": body, "more_body": False},
+        {"type": "http.disconnect"},
+    ]
+
+
 def test_invalid_media_and_request_bytes_are_rejected_before_vllm(
     monkeypatch: MonkeyPatch,
 ) -> None:

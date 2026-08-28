@@ -84,7 +84,7 @@ class PadawanCapabilitiesMiddleware:
             if not delivered:
                 delivered = True
                 return {"type": "http.request", "body": bytes(body), "more_body": False}
-            return {"type": "http.disconnect"}
+            return await receive()
 
         return replay, None
 

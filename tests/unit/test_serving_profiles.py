@@ -25,6 +25,12 @@ _PROFILES = (
     "responses-64k-candidate-v1.json",
     "responses-256k-candidate-v1.json",
 )
+_PERFORMANCE_PROFILES = (
+    "responses-64k-agent-candidate-v1.json",
+    "responses-32k-atlas-candidate-v1.json",
+    "responses-256k-optimized-candidate-v1.json",
+)
+_ATLAS_STABILITY_PROFILE = "responses-32k-atlas-stability-baseline-v1.json"
 
 
 @pytest.mark.parametrize(
@@ -170,6 +176,95 @@ def test_long_context_profile_rejects_disabled_chunked_prefill(tmp_path: Path) -
     path.write_text(json.dumps(payload))
 
     with pytest.raises(ServingProfileError, match="require chunked prefill"):
+        load_serving_profile(path)
+
+
+@pytest.mark.parametrize(
+    ("name", "mode", "max_model_len", "max_num_seqs", "max_num_batched_tokens"),
+    (
+        (_PERFORMANCE_PROFILES[0], "agent-latency-candidate", 65_536, 2, 1_024),
+        (_PERFORMANCE_PROFILES[1], "atlas-throughput-candidate", 32_768, 16, 512),
+        (_PERFORMANCE_PROFILES[2], "long-context-latency-candidate", 262_144, 1, 512),
+    ),
+)
+def test_performance_profiles_request_optimized_runtime_without_claiming_validation(
+    name: str,
+    mode: str,
+    max_model_len: int,
+    max_num_seqs: int,
+    max_num_batched_tokens: int,
+) -> None:
+    profile = load_serving_profile(_ROOT / "configs/serving" / name)
+
+    assert profile.status == "projected-unvalidated"
+    assert profile.runtime.performance_mode == mode
+    assert profile.runtime.max_model_len == max_model_len
+    assert profile.runtime.max_num_seqs == max_num_seqs
+    assert profile.runtime.max_num_batched_tokens == max_num_batched_tokens
+    assert profile.runtime.enforce_eager is False
+    assert profile.runtime.enable_prefix_caching is True
+    assert profile.runtime.async_scheduling is True
+    assert profile.runtime.disable_custom_all_reduce is False
+    assert profile.runtime.marlin_use_atomic_add is False
+
+    command = profile.vllm_command(Path("/model"))
+    assert "--enforce-eager" not in command
+    assert "--enable-prefix-caching" in command
+    assert "--async-scheduling" in command
+    assert "--disable-custom-all-reduce" not in command
+    capabilities = profile.capability_document()
+    assert capabilities["runtime"]["performance_mode"] == mode
+    assert capabilities["runtime"]["compilation_requested"] is True
+    assert capabilities["runtime"]["cuda_graph_capture_requested"] is True
+    assert capabilities["runtime"]["custom_all_reduce_requested"] is True
+
+
+def test_atlas_stability_profile_excludes_the_failed_cuda_graph_path() -> None:
+    profile = load_serving_profile(_ROOT / "configs/serving" / _ATLAS_STABILITY_PROFILE)
+
+    assert profile.status == "projected-unvalidated"
+    assert profile.runtime.performance_mode == "atlas-stability-baseline"
+    assert profile.runtime.max_model_len == 32_768
+    assert profile.runtime.max_num_seqs == 16
+    assert profile.runtime.max_num_batched_tokens == 512
+    assert profile.runtime.enforce_eager is True
+    assert profile.runtime.enable_prefix_caching is True
+    assert profile.runtime.async_scheduling is False
+    assert profile.runtime.disable_custom_all_reduce is False
+    assert profile.runtime.marlin_use_atomic_add is False
+
+    command = profile.vllm_command(Path("/model"))
+    assert "--enforce-eager" in command
+    assert "--enable-prefix-caching" in command
+    assert "--no-async-scheduling" in command
+    assert "--async-scheduling" not in command
+    assert "--disable-custom-all-reduce" not in command
+    capabilities = profile.capability_document()
+    assert capabilities["runtime"]["performance_mode"] == "atlas-stability-baseline"
+    assert capabilities["runtime"]["compilation_requested"] is False
+    assert capabilities["runtime"]["cuda_graph_capture_requested"] is False
+    assert capabilities["runtime"]["custom_all_reduce_requested"] is True
+
+
+def test_unclassified_long_context_profile_cannot_enable_batching(tmp_path: Path) -> None:
+    payload = json.loads((_ROOT / "configs/serving/responses-64k-candidate-v1.json").read_text())
+    payload["runtime"]["max_num_seqs"] = 2
+    path = tmp_path / "unclassified-batch.json"
+    path.write_text(json.dumps(payload))
+
+    with pytest.raises(ServingProfileError, match="must remain batch-one"):
+        load_serving_profile(path)
+
+
+def test_a100_bf16_profile_rejects_ineffective_marlin_atomic_add(tmp_path: Path) -> None:
+    payload = json.loads(
+        (_ROOT / "configs/serving/responses-64k-agent-candidate-v1.json").read_text()
+    )
+    payload["runtime"]["marlin_use_atomic_add"] = True
+    path = tmp_path / "atomic-add.json"
+    path.write_text(json.dumps(payload))
+
+    with pytest.raises(ServingProfileError, match="ineffective for BF16"):
         load_serving_profile(path)
 
 
@@ -381,3 +476,4 @@ def test_server_environment_disables_process_local_response_store(
     assert environment["VLLM_ENABLE_RESPONSES_API_STORE"] == "0"
     assert environment["VLLM_WORKER_MULTIPROC_METHOD"] == "spawn"
     assert environment["LAMPORT_RS_SCONV"] == "0"
+    assert environment["VLLM_MARLIN_USE_ATOMIC_ADD"] == "0"

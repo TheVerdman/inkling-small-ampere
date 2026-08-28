@@ -9,7 +9,7 @@ DOCTOR_ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory multimodal-local-check mechanistic-offline-check vertex-gate-e-dry-run test lint format format-check typecheck check
+.PHONY: help bootstrap doctor doctor-strict inspect-checkpoint model-memory multimodal-local-check mechanistic-offline-check performance-local-check vertex-gate-e-dry-run test lint format format-check typecheck check
 
 help:
 	@echo "Inkling-Small Ampere development commands"
@@ -20,6 +20,7 @@ help:
 	@echo "  make model-memory   Project profiles and all four-rank placements"
 	@echo "  make multimodal-local-check  Verify media patches, fixtures, admission, and native dry run"
 	@echo "  make mechanistic-offline-check  Validate governed probes, capture profiles, schemas, and patch pins"
+	@echo "  make performance-local-check  Validate optimized profile argv and prepare the no-network benchmark"
 	@echo "  make vertex-gate-e-dry-run  Render fail-closed Vertex, bootstrap, probe, and edge gates"
 	@echo "  make bootstrap      Install pinned uv locally and sync the dev environment"
 	@echo "  make check          Run hermetic formatting, lint, types, and tests"
@@ -79,6 +80,21 @@ mechanistic-offline-check:
 		--verify-index manifests/mechanistic-schema-index-v1.json
 	PYTHONPATH=src:. $(PYTHON) -m scripts.apply_runtime_patchset \
 		--verify-only --include-mechanistic-observer
+
+performance-local-check:
+	PYTHONPATH=src:. $(GATE_E_PYTHON) -m inkling_ampere.serving.launch \
+		--profile configs/serving/responses-64k-agent-candidate-v1.json \
+		--model-path /models/inkling --dry-run >/dev/null
+	PYTHONPATH=src:. $(GATE_E_PYTHON) -m inkling_ampere.serving.launch \
+		--profile configs/serving/responses-32k-atlas-candidate-v1.json \
+		--model-path /models/inkling --dry-run >/dev/null
+	PYTHONPATH=src:. $(GATE_E_PYTHON) -m inkling_ampere.serving.launch \
+		--profile configs/serving/responses-32k-atlas-stability-baseline-v1.json \
+		--model-path /models/inkling --dry-run >/dev/null
+	PYTHONPATH=src:. $(GATE_E_PYTHON) -m inkling_ampere.serving.launch \
+		--profile configs/serving/responses-256k-optimized-candidate-v1.json \
+		--model-path /models/inkling --dry-run >/dev/null
+	PYTHONPATH=src:. $(GATE_E_PYTHON) scripts/benchmark_responses_performance.py >/dev/null
 
 vertex-gate-e-dry-run:
 	PYTHONPATH=src $(GATE_E_PYTHON) scripts/render_vertex_gate_e.py

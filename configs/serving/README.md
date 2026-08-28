@@ -20,6 +20,21 @@ Profiles are intentionally staged:
   later Magellan work. Its KV storage fits the measured Gate D headroom on
   paper, but long-prefill workspace, compilation, latency, and correctness
   remain unverified on A100.
+- `responses-64k-agent-candidate-v1.json` is an explicitly unvalidated
+  interactive-agent candidate. It requests compilation/CUDA graphs, exact
+  prefix reuse, async scheduling, and custom all-reduce while admitting at most
+  two sequences.
+- `responses-32k-atlas-candidate-v1.json` is an explicitly unvalidated
+  continuous-batching candidate for independent Capability Atlas condition
+  lanes. Its 16-sequence scheduler ceiling does not claim that sixteen full
+  32K contexts fit in the 4-GiB KV allocation.
+- `responses-32k-atlas-stability-baseline-v1.json` preserves that Atlas
+  admission shape but requires eager execution and disables async scheduling.
+  It is the next live-measurement baseline after the breakable-CUDA-graph path
+  crashed on the first generation request; it remains unvalidated.
+- `responses-256k-optimized-candidate-v1.json` applies the candidate latency
+  controls to a batch-one 128K/240K slow lane. It has no inherited long-context
+  correctness evidence.
 - `responses-2k-multimodal-bringup-v1.json` is an isolated image/audio-input
   to text-output candidate. It enables both native towers, uses the additive
   Responses input-audio and exact profiling-bound patches, pins processor assets
@@ -29,12 +44,18 @@ Profiles are intentionally staged:
   native/API/ladders/attestation path in `docs/multimodal-release-gate.md`
   passes.
 
-All profiles remain batch-one, use 512-token chunked prefill for long
-contexts, keep prefix caching/CUDA graphs/offload/speculation disabled, and
-allocate KV memory explicitly. Response storage is disabled: clients must
-send conversation state explicitly. vLLM's optional `previous_response_id`
-store is process-local, unbounded, non-durable, and unsafe to treat as a
-replicated production conversation store.
+The previously validated and projected profiles remain batch-one and keep
+prefix caching/CUDA graphs/offload/speculation disabled. The three optimized
+candidates and eager Atlas baseline are separate unvalidated runtime identities;
+they do not revise old evidence. Every profile allocates KV memory explicitly. Response storage is
+disabled, so clients send conversation state explicitly. vLLM's optional
+`previous_response_id` store is process-local, unbounded, non-durable, and
+unsafe to treat as a replicated production conversation store. Automatic
+prefix caching is an internal optimization over that exact explicit history,
+not a conversation-state authority.
+
+The candidate rationale, memory bounds, bounded live benchmark, equivalence
+gate, and promotion order are in `docs/a100-serving-performance.md`.
 
 Dry-run a launch without importing vLLM or touching a GPU:
 

@@ -182,6 +182,7 @@ Key durable outputs:
 - [Gate E Responses operationalization](docs/gate-e-operationalization.md)
 - [Mechanistic interpretability runtime](docs/mechanistic-platform.md)
 - [Padawan/Capability Atlas interchange](docs/padawan-mechanistic-interchange.md)
+- [A100 serving performance program](docs/a100-serving-performance.md)
 - [W8A16 mechanistic fidelity program](docs/mechanistic-quantization-program.md)
 - [Bounded A100 mechanistic campaign](docs/mechanistic-gpu-campaign.md)
 - `manifests/gate-d-reproducibility-20260801.json`
