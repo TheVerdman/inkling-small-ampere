@@ -1,6 +1,7 @@
 # PR #55078: local review follow-up
 
-Date: 2026-09-14. Status: **committed locally, not published, A100 run in progress**.
+Date: 2026-09-14. Status: **committed locally, A100 validation passed, cleanup
+verified, not published**.
 
 This follow-up is based on published commit
 `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`, still on upstream
@@ -47,7 +48,7 @@ it does not establish correctness of live cache writes or engine scheduling.
 
 The two-layer model harness now rejects an unexpected metadata backend in
 addition to checking kernel selection and the cache geometry that avoids
-the separate #51951 issue. Its end-to-end run remains pending.
+the separate #51951 issue. Its bounded end-to-end run passed as recorded below.
 
 ## Checks completed locally
 
@@ -64,10 +65,11 @@ the separate #51951 issue. Its end-to-end run remains pending.
   import, and the AMD facades differ only in shared-module imports.
 - `git diff --check` passed in both repositories.
 
-The upstream attention pytest invocation could not collect in the available
-Mac environment: `tests/conftest.py` imports unavailable `tblib`. No upstream
-attention tests or GPU kernels passed as part of this follow-up. Lint, source
-checks, and supporting harness tests do not replace GPU validation.
+The initial upstream attention pytest invocation could not collect in the
+available Mac environment: `tests/conftest.py` imports unavailable `tblib`.
+At that local-review checkpoint, no upstream attention tests or GPU kernels
+had run. The subsequent approved A100 results below supply hardware evidence;
+the local checks alone did not establish it.
 
 ## Approved A100 run
 
@@ -96,12 +98,51 @@ The submitted command was:
   --candidate-commit 33c25ab75627d670eb90f084f2b3875145bcc06b
 ```
 
-The approved validation covers
-the updated attention suite, the existing nine operator cases, and the
-two-layer BF16 model comparison. It must verify the new Triton backend,
+The run covered the updated attention suite, the existing nine operator cases,
+and the two-layer BF16 model comparison. It verified the new Triton backend,
 cache geometry, live FP32 attention checks, matching fixed-history schedules,
-and the existing token/logprob gates. The controller requires an explicitly
-selected commit and clean upstream tracked files before submission.
+and the existing token/logprob gates.
+
+### Verified A100 results
+
+- Focused suite: **17 passed**, 72 deselected, 46.60 seconds.
+- Full attention suite: **88 passed, 1 skipped**, 38.60 seconds. The skip
+  requires Hopper+. The extra passing case versus the previous run is the
+  second physical packed-cache layout.
+- All **nine** Triton/Flex/FP32 operator cases passed, including 128K global
+  and local decode. Maximum Triton/reference error: `0.015625`; maximum
+  Triton/Flex error: `0.0078125`.
+- The two-layer BF16 model matched **24/24 greedy tokens**. Maximum generation
+  logprob difference across the full 256-token vocabulary: `0.007826328`.
+- At all **24 fixed-history positions**, all 256 vocabulary entries passed
+  the unchanged `0.02` limit. Maximum difference: `0.008028984`.
+  Recorded fixed-history batch/chunk schedules matched.
+- Each backend passed **32 live attention/FP32 checks**, with maximum error
+  `0.003864050`. Loaded parameter hashes matched.
+- Both local/global candidate layers reported `TritonAttentionBackend`; both
+  reference layers reported `FlexAttentionBackend`. Both backends verified
+  4-token convolution blocks and 16-token attention blocks.
+- Expected, pre-run, and post-run source hashes matched. After downloading
+  the report, its SHA-256 and every transported source hash were rechecked
+  against the controller audit and local files. The model comparison gates
+  were independently recomputed from the report and passed.
+
+Runtime: one NVIDIA A100-SXM4-80GB, Torch `2.13.0+cu130`, vLLM
+`0.1.1.dev75+g7ee8a6dd0`, the pinned parent wheel and immutable image. This
+was a TP1 eager synthetic run with nonzero convolutions, local/global attention,
+and chunked prefill, not a production-checkpoint or CUDA-graph evaluation.
+
+The controller observed `JOB_STATE_SUCCEEDED` at 06:12:40 UTC and completed
+deletion verification at 06:12:44 UTC. A separate read confirmed that the
+CustomJob was absent and the active-job inventory was empty. No retry was used.
+
+Evidence:
+
+- [Worker report](../results/raw/inkling-sm80-triton-20260914-060038.json),
+  SHA-256 `585e1db2ca4e7cb088ab479ff1ec81d26d410088f50b50d8679dda20066c2532`.
+- [Controller and cleanup audit](../results/raw/inkling-sm80-triton-20260914-060038-controller.json).
+- Supporting validation scripts and the initial run record are saved in the
+  separate local tooling commit `a472847`.
 
 ## Remaining limits
 
