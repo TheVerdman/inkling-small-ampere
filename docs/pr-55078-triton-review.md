@@ -1,7 +1,10 @@
 # PR #55078 Triton conversion
 
-Status: implementation and A100 validation approved on 2026-09-13. No push,
-PR edit, or public comment is authorized by this approval.
+Status: the user separately approved publication after reviewing the validation
+results and public copy. The tested code, approved PR title/body and approved
+comment were published and verified on 2026-09-14 at 02:06:12 UTC; see the
+[publication record](pr-55078-triton-update.md). TP4 numerical parity remains
+unvalidated. No additional GPU run was performed during publication.
 
 ## Completed synthetic validation
 
@@ -14,7 +17,7 @@ numerical-parity gate: maximum fixed-history logprob difference 1.381737709
 against a 0.1 limit. All ten smoke outputs and the retrieval tokens matched;
 the matching runtime/input/weight-sample/schedule controls did not eliminate
 the score discrepancy. Both TP4 jobs were deleted and independently verified
-absent. Publication remains on hold pending investigation, and the completed
+absent. Publication was held pending investigation, and the completed
 synthetic results below must not be presented as a production parity pass.
 
 The subsequent [repeatability diagnostic](pr-55078-tp4-diagnostics.md)
@@ -35,7 +38,8 @@ three processes passed ten smoke checks and 8K retrieval. Source hashes match
 before and after. Serialization alone therefore did not resolve repeatability,
 and production parity remains failed. The job was deleted, independently verified
 absent, and the active-job inventory was empty at 00:53 UTC. No retry allowance
-remains. Publication stays on hold, with all prior failures preserved.
+remains. All prior failures are preserved in the subsequently approved public
+update; publication does not turn this numerical comparison into a pass.
 
 The local conversion at `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec` passed
 the corrected A100 validation. Both exact greedy and numerical model
@@ -63,9 +67,9 @@ matched before and after testing. The job was deleted and verified absent.
 
 Evidence: [worker report](../results/raw/inkling-sm80-triton-20260913-162144.json)
 and [controller/cleanup audit](../results/raw/inkling-sm80-triton-20260913-162144-controller.json).
-The [full proposed PR diff](pr-55078-triton.patch) is an exact snapshot against
-the pinned parent. The exact proposed public text is in
-[the PR update draft](pr-55078-triton-update.md).
+The [full PR diff](pr-55078-triton.patch) is an exact snapshot against
+the pinned parent. The exact approved public text is in
+[the PR publication record](pr-55078-triton-update.md).
 
 Runtime: one NVIDIA A100-SXM4-80GB, Torch `2.13.0+cu130`, vLLM
 `0.1.1.dev75+g7ee8a6dd0`, pinned parent wheel and immutable image. The original
@@ -104,15 +108,17 @@ but fails the agreed numerical comparison; see the separate report above.
 The corrected fixture avoids, and does not fix, the separate #51951 conv-cache
 bug. SM12x support is not added.
 
-The public PR remains unchanged at `f9c773ade5`. Human review of every changed
-line and explicit approval of the diff, push, and exact public text are still
-required. No branch rename or new PR is necessary.
+Following the user's explicit publication approval, the existing PR branch was
+fast-forwarded from `f9c773ade5` to the tested `6ca6a72bdd`. The approved exact
+title/body/comment were published and independently verified. No branch rename,
+new PR, rebase or force-push was performed. This update is for maintainer review,
+not a claim of TP4 numerical parity or merge readiness.
 All nine synthetic-validation jobs were independently confirmed absent, as
 were the two subsequent TP4 jobs.
 
 ## Scope and provenance
 
-- Keep parent `7ee8a6dd013819838da8012ca549d724bee7c6c6` fixed. The currently
+- Keep parent `7ee8a6dd013819838da8012ca549d724bee7c6c6` fixed. The previously
   published, A100-tested FlexAttention commit is
   `f9c773ade55bc45695c4d56510a87e395057704c` and remains the comparison baseline.
 - Follow [Isotr0py's direction](https://github.com/vllm-project/vllm/pull/55078#issuecomment-5651116753)

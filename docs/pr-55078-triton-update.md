@@ -1,22 +1,38 @@
-# PR #55078: proposed public update
+# PR #55078: approved public update
 
 The user approved publication of the tested code and exact title/body/comment
-below on 2026-09-14. Publication is in progress; its result will be recorded here.
+below on 2026-09-14. Publication is complete and was independently read back
+at 02:06:12 UTC: the title, body and comment match the approved text exactly.
 The [full code diff](pr-55078-triton.patch) and
 [validation evidence](pr-55078-triton-review.md) remain the review record.
 
 This is an update for maintainer review, not a claim that TP4 numerical
 parity passed. The [TP4 comparison](pr-55078-tp4-validation.md) and subsequent
 [repeatability diagnostics](pr-55078-tp4-diagnostics.md) remain failed against
-their original gates. No additional GPU run is part of this proposed update.
+their original gates. No additional GPU run was performed for this update.
 
-Local tested commit: `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`.
-Keep the existing target branch `TheVerdman:fix/inkling-sm8x-flex-attention`.
-The public head last checked on 2026-09-14 at 01:07 UTC, `f9c773ade5`, is an
-ancestor. Subject to a fresh remote-head check after approval, this is a normal
-fast-forward push. No rebase, force-push, branch rename or new PR is proposed.
+Published tested commit: `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`.
+The existing target branch `TheVerdman:fix/inkling-sm8x-flex-attention` was
+advanced from `f9c773ade55bc45695c4d56510a87e395057704c` with a normal
+fast-forward push, verified against both the remote ref and PR head.
+No rebase, force-push, branch rename or new PR was performed.
 The linked full PR diff was verified byte-for-byte against the tested commit
 on 2026-09-14 at 01:18 UTC.
+
+## Publication record
+
+- Existing [PR #55078](https://github.com/vllm-project/vllm/pull/55078) remains
+  open with the tested head above. Its approved title and body were updated
+  at 02:05:06 UTC.
+- The exact [approved comment to Isotr0py](https://github.com/vllm-project/vllm/pull/55078#issuecomment-5658015877)
+  was posted at 02:05:42 UTC and verified by reading the comment back.
+- Supporting validation tooling, tests, evidence summaries and reviewed copy
+  were committed locally as `9ef18c4a8cde4bbfc9057938925a70cb74dde2d2`.
+  The separate `inkling-small-ampere` repository was not pushed.
+- The publication preflight passed all 31 CPU harness tests and Ruff checks.
+  Raw reports and the nested upstream checkout remain excluded from that commit.
+- No additional GPU run, CI-trigger comment or merge was performed. The failed
+  TP4 numerical gate and all its caveats remain disclosed in the PR body.
 
 ## Proposed title
 

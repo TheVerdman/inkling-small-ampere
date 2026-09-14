@@ -5,6 +5,11 @@ retry failed its numerical gate. This is one new bounded diagnostic allocation,
 not approval to push, edit the PR, post a comment, or weaken a test threshold.
 The previous [TP4 result](pr-55078-tp4-validation.md) remains failed.
 
+Subsequent publication status: the user separately approved the tested code
+and exact public copy. The PR update was published and verified on 2026-09-14
+at 02:06:12 UTC; see the [publication record](pr-55078-triton-update.md).
+That approval did not authorize another GPU run or change any failed gate.
+
 Latest outcome: the freshly approved serialized-expert retry completed all
 three processes, but production parity remains unvalidated. Disabling expert
 overlap did not stabilize either backend: clean-repeat maxima were 1.56168 and
@@ -12,7 +17,7 @@ overlap did not stabilize either backend: clean-repeat maxima were 1.56168 and
 0.1 gate. Triton versus Flex reached 1.19277 and also failed top-logprob coverage.
 All three processes passed all ten smoke checks and 8K retrieval. The temporary
 job was deleted, with independent NOT_FOUND and an empty active-job inventory
-at 2026-09-14 00:53 UTC. Nothing was pushed or posted.
+at 2026-09-14 00:53 UTC. Nothing was pushed or posted during the diagnostic run.
 
 The original three-process diagnostic also failed parity. The two intervening
 serialized-expert retries stopped at their queue caps because Vertex reported
@@ -334,6 +339,8 @@ made in this diagnostic turn.
 At 2026-09-13 21:25 UTC a read-only GitHub query confirmed that PR #55078 remained open
 on `TheVerdman:fix/inkling-sm8x-flex-attention`, with public head
 `f9c773ade55bc45695c4d56510a87e395057704c` and its existing FlexAttention title.
-The local Triton candidate remains `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`.
-Any public title/body/comment or push still requires the user's explicit review
-and approval. The updated public copy is a draft only.
+At that stage, the local Triton candidate was
+`6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`; a push and public title/body/comment
+still required the user's explicit review and approval. The later approval and
+completed publication are recorded in the status note above. The diagnostic
+measurements and failed outcome are unchanged.
