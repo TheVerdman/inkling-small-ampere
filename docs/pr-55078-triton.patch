@@ -1,0 +1,1997 @@
+diff --git a/tests/models/inkling/test_fa4_rel_attention.py b/tests/models/inkling/test_fa4_rel_attention.py
+index 089e7b558..b7d356eff 100644
+--- a/tests/models/inkling/test_fa4_rel_attention.py
++++ b/tests/models/inkling/test_fa4_rel_attention.py
+@@ -1,10 +1,9 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-"""Correctness test for the Inkling FA4 relative-attention score-mod kernel.
++"""Correctness tests for Inkling's NVIDIA relative-attention backends.
+ 
+-Checks ``_INKLING_FA4_REL_ATTENTION_KERNEL`` against a pure-PyTorch reference
+-that implements the relative bias exactly as documented in the Inkling architecture
+-guide::
++Checks FA4 and the SM8x Triton fallback against a pure-PyTorch reference
++that implements the relative bias documented in the Inkling architecture guide::
+ 
+     logit(i, j, h) = (1 / head_dim) * dot(q[i, h], k[j, h]) + rel_bias(i, j, h)
+     rel_bias(i, j, h) = rel_logits[i, h, i - j]   if 0 <= i - j < rel_extent
+@@ -14,12 +13,21 @@ with causal (and optionally sliding-window) masking handled by the backend.
+ """
+ 
+ import importlib
++from collections.abc import Callable
++from types import SimpleNamespace
+ 
+ import pytest
+ import torch
+ 
++from vllm.models.inkling.common.triton_rel_attention import (
++    inkling_triton_rel_attention,
++)
++from vllm.models.inkling.common.triton_rel_attention_decode import (
++    use_split_kv_decode,
++)
+ from vllm.models.inkling.nvidia.attention import (
+     InklingAttention,
++    _use_sm8x_triton_attention,
+     compute_log_scaling_tau,
+ )
+ from vllm.models.inkling.nvidia.ops.fa4_rel_attention import (
+@@ -29,6 +37,15 @@ from vllm.models.inkling.nvidia.ops.fa4_rel_attention import (
+ )
+ from vllm.platforms import current_platform
+ from vllm.platforms.interface import DeviceCapability
++from vllm.v1.attention.backends.flash_attn import (
++    FlashAttentionBackend,
++    FlashAttentionMetadata,
++)
++from vllm.v1.attention.backends.flex_attention import (
++    FlexAttentionImpl,
++    FlexAttentionMetadata,
++    physical_to_logical_mapping,
++)
+ 
+ _cap = current_platform.get_device_capability() if current_platform.is_cuda() else None
+ 
+@@ -62,6 +79,107 @@ def test_split_packed_kv_cache():
+     torch.testing.assert_close(value_cache, attention.kv_cache[..., 8:].transpose(1, 2))
+ 
+ 
++@pytest.mark.parametrize(
++    ("major", "expected"),
++    [(8, True), (9, False), (10, False), (11, False), (12, False)],
++)
++def test_sm8x_triton_attention_selection(monkeypatch, major, expected):
++    monkeypatch.setattr(
++        current_platform,
++        "get_device_capability",
++        lambda: DeviceCapability(major=major, minor=0),
++    )
++    _use_sm8x_triton_attention.cache_clear()
++    try:
++        assert _use_sm8x_triton_attention() is expected
++    finally:
++        _use_sm8x_triton_attention.cache_clear()
++
++
++@pytest.mark.parametrize(
++    ("is_cuda", "enabled", "expected"),
++    [(True, "1", True), (True, "0", False), (False, "1", False)],
++)
++def test_sm8x_triton_long_local_decode_dispatch(
++    monkeypatch, is_cuda, enabled, expected
++):
++    """Avoid a full-prefix scan on CUDA without changing ROCm's small-page choice."""
++    monkeypatch.setattr(current_platform, "is_cuda", lambda: is_cuda)
++    monkeypatch.setenv("INKLING_SPLIT_KV", enabled)
++    assert (
++        use_split_kv_decode(
++            max_query_len=1,
++            max_kv_len=131072,
++            page_size=16,
++            window_left=511,
++        )
++        is expected
++    )
++
++
++def _make_flex_score_mod(
++    rel_logits: torch.Tensor,
++    rel_extent: int,
++) -> Callable[..., torch.Tensor]:
++    """Preserve the published FlexAttention implementation as a test oracle."""
++
++    def score_mod_rel_bias(
++        score: torch.Tensor,
++        batch_index: torch.Tensor,
++        head_index: torch.Tensor,
++        logical_query_index: torch.Tensor,
++        logical_kv_index: torch.Tensor,
++        *,
++        physical_q: torch.Tensor,
++    ) -> torch.Tensor:
++        del batch_index
++        relative_distance = logical_query_index - logical_kv_index
++        relative_index = torch.clamp(relative_distance, min=0, max=rel_extent - 1)
++        safe_query_index = torch.clamp(
++            physical_q,
++            min=0,
++            max=rel_logits.shape[0] - 1,
++        )
++        relative_bias = rel_logits[
++            safe_query_index,
++            head_index,
++            relative_index,
++        ].to(torch.float32)
++        return score + torch.where(
++            (relative_distance >= 0) & (relative_distance < rel_extent),
++            relative_bias,
++            torch.zeros_like(score),
++        )
++
++    return score_mod_rel_bias
++
++
++def test_flex_reference_score_mod_relative_bias():
++    rel_logits = torch.arange(2 * 3 * 4, dtype=torch.bfloat16).reshape(2, 3, 4)
++    score_mod = _make_flex_score_mod(rel_logits, rel_extent=4)
++    score = torch.tensor(2.0)
++
++    actual = score_mod(
++        score,
++        torch.tensor(0),
++        torch.tensor(1),
++        torch.tensor(7),
++        torch.tensor(5),
++        physical_q=torch.tensor(1),
++    )
++    torch.testing.assert_close(actual, score + rel_logits[1, 1, 2].float())
++
++    actual = score_mod(
++        score,
++        torch.tensor(0),
++        torch.tensor(1),
++        torch.tensor(7),
++        torch.tensor(2),
++        physical_q=torch.tensor(1),
++    )
++    torch.testing.assert_close(actual, score)
++
++
+ def test_num_splits_hopper_is_unsplit(monkeypatch):
+     monkeypatch.setattr(
+         current_platform,
+@@ -190,10 +308,12 @@ def _ref_rel_attn(
+         qi = q[start : start + ql].float()  # [ql, H, D]
+         rl = rel_logits[start : start + ql].float()  # [ql, H, rel_extent]
+ 
+-        nblk = (kl + BLOCK_SIZE - 1) // BLOCK_SIZE
++        block_size = key_cache.shape[1]
++        head_dim = q.shape[-1]
++        nblk = (kl + block_size - 1) // block_size
+         blk = bt[i, :nblk]
+-        k = key_cache[blk].reshape(-1, num_kv_heads, HEAD_DIM)[:kl].float()
+-        v = value_cache[blk].reshape(-1, num_kv_heads, HEAD_DIM)[:kl].float()
++        k = key_cache[blk].reshape(-1, num_kv_heads, head_dim)[:kl].float()
++        v = value_cache[blk].reshape(-1, num_kv_heads, head_dim)[:kl].float()
+         k = k.repeat_interleave(g, dim=1)  # [kl, H, D]
+         v = v.repeat_interleave(g, dim=1)
+ 
+@@ -279,7 +399,13 @@ def _run_case(seq_lens, num_heads, num_kv_heads, rel_extent, window_left, seed=0
+         num_kv_heads=num_kv_heads,
+         max_kv_len=max(kv_lens),
+     )
+-    out = _INKLING_FA4_REL_ATTENTION_KERNEL(
++    use_triton = _cap is not None and _cap.major == 8
++    attention = (
++        inkling_triton_rel_attention
++        if use_triton
++        else _INKLING_FA4_REL_ATTENTION_KERNEL
++    )
++    out = attention(
+         q,
+         key_cache,
+         value_cache,
+@@ -294,6 +420,7 @@ def _run_case(seq_lens, num_heads, num_kv_heads, rel_extent, window_left, seed=0
+         rel_logits=rel_logits,
+         num_splits=num_splits,
+         out=preallocated_out,
++        **({"max_kv_len": max(kv_lens)} if use_triton else {}),
+     )
+     assert out.data_ptr() == preallocated_out.data_ptr()
+     out = out.view(total_q, num_heads, HEAD_DIM)
+@@ -314,6 +441,211 @@ def _run_case(seq_lens, num_heads, num_kv_heads, rel_extent, window_left, seed=0
+     torch.testing.assert_close(out.float(), ref.float(), atol=2e-2, rtol=2e-2)
+ 
+ 
++def _make_sm8x_comparison_case(
++    seq_lens,
++    *,
++    num_heads=8,
++    num_kv_heads=2,
++    rel_extent=128,
++    head_dim=HEAD_DIM,
++    block_size=BLOCK_SIZE,
++    dtype=DTYPE,
++    seed=0,
++):
++    """Use shuffled physical pages and the model's packed KV strides."""
++    torch.manual_seed(seed)
++    q_lens = [q for q, _ in seq_lens]
++    kv_lens = [kv for _, kv in seq_lens]
++    max_blocks = (max(kv_lens) + block_size - 1) // block_size
++    total_blocks = len(seq_lens) * max_blocks + 1
++    packed = torch.randn(
++        total_blocks,
++        block_size,
++        num_kv_heads,
++        2 * head_dim,
++        device="cuda",
++        dtype=dtype,
++    ).transpose(1, 2)
++    key_cache, value_cache = packed.transpose(1, 2).split(head_dim, dim=-1)
++    block_table = (
++        (torch.randperm(total_blocks - 1, device="cuda") + 1)
++        .reshape(len(seq_lens), max_blocks)
++        .to(torch.int32)
++    )
++    query_start_loc = torch.tensor(
++        [0, *torch.cumsum(torch.tensor(q_lens), 0).tolist()],
++        dtype=torch.int32,
++        device="cuda",
++    )
++    seq_lens_tensor = torch.tensor(kv_lens, dtype=torch.int32, device="cuda")
++    q = torch.randn(sum(q_lens), num_heads, head_dim, device="cuda", dtype=dtype)
++    rel_logits = torch.randn(
++        sum(q_lens), num_heads, rel_extent, device="cuda", dtype=dtype
++    )
++    return dict(
++        q=q,
++        key_cache=key_cache,
++        value_cache=value_cache,
++        packed=packed,
++        rel_logits=rel_logits,
++        block_table=block_table,
++        query_start_loc=query_start_loc,
++        seq_lens=seq_lens_tensor,
++        q_lens=q_lens,
++        kv_lens=kv_lens,
++    )
++
++
++def _make_flex_reference(case, local_extent):
++    q = case["q"]
++    block_table = case["block_table"]
++    query_start_loc = case["query_start_loc"]
++    seq_lens = case["seq_lens"]
++    total_blocks, block_size, num_kv_heads, head_dim = case["key_cache"].shape
++    num_reqs = len(case["q_lens"])
++    num_query_groups = (q.shape[0] + block_size - 1) // block_size
++    metadata = FlexAttentionMetadata(
++        causal=True,
++        num_actual_tokens=q.shape[0],
++        max_query_len=max(case["q_lens"]),
++        query_start_loc=query_start_loc,
++        query_start_loc_cpu=query_start_loc.cpu(),
++        max_seq_len=max(case["kv_lens"]),
++        seq_lens=seq_lens,
++        block_table=block_table,
++        slot_mapping=torch.zeros(q.shape[0], device="cuda", dtype=torch.int64),
++        use_cascade=False,
++        common_prefix_len=0,
++        cu_prefix_query_lens=None,
++        prefix_kv_lens=None,
++        suffix_kv_lens=None,
++        total_cache_tokens=total_blocks * block_size,
++        block_size=block_size,
++        max_possible_sequence_length=block_table.shape[1] * block_size,
++        num_reqs=num_reqs,
++        physical_to_logical=physical_to_logical_mapping(
++            block_table, seq_lens, block_size, total_blocks
++        ),
++        decode_offset=seq_lens - query_start_loc.diff(),
++        num_blocks_per_seq=(seq_lens + block_size - 1) // block_size,
++        persistent_kv_indices=torch.empty(
++            (num_query_groups, block_size * block_table.shape[1]),
++            device="cuda",
++            dtype=torch.int32,
++        ),
++        persistent_kv_num_blocks=torch.empty(
++            num_query_groups, device="cuda", dtype=torch.int32
++        ),
++        persistent_doc_ids=torch.empty(q.shape[0], device="cuda", dtype=torch.int32),
++        direct_build=True,
++        q_block_size=block_size,
++        kv_block_size=block_size,
++    )
++    impl = FlexAttentionImpl(
++        num_heads=q.shape[1],
++        head_size=head_dim,
++        scale=1.0 / head_dim,
++        num_kv_heads=num_kv_heads,
++        alibi_slopes=None,
++        sliding_window=local_extent,
++        kv_cache_dtype="auto",
++        block_m=block_size,
++        block_n=block_size,
++    )
++    return impl, metadata
++
++
++@pytest.mark.skipif(
++    not current_platform.is_cuda() or _cap is None or _cap.major != 8,
++    reason="requires SM8x",
++)
++@pytest.mark.parametrize("local_extent", [None, 16])
++@pytest.mark.parametrize(
++    "seq_lens",
++    [
++        [(3, 35)],  # original validated FlexAttention case
++        [(5, 5), (1, 35), (3, 49)],  # mixed prefill, decode, and extend
++        [(128, 128), (31, 31)],  # more query groups than requests
++        [(1, 8193), (1, 13)],  # split-KV decode and mostly empty splits
++    ],
++)
++@torch.inference_mode()
++def test_sm8x_triton_matches_flex_and_reference(monkeypatch, local_extent, seq_lens):
++    rel_extent = local_extent or 64
++    case = _make_sm8x_comparison_case(seq_lens, rel_extent=rel_extent)
++    q = case["q"]
++    flex_impl, flex_metadata = _make_flex_reference(case, local_extent)
++    metadata = FlashAttentionMetadata(
++        num_actual_tokens=q.shape[0],
++        max_query_len=max(case["q_lens"]),
++        query_start_loc=case["query_start_loc"],
++        max_seq_len=max(case["kv_lens"]),
++        seq_lens=case["seq_lens"],
++        block_table=case["block_table"],
++        slot_mapping=flex_metadata.slot_mapping,
++        use_cascade=False,
++        common_prefix_len=0,
++        cu_prefix_query_lens=None,
++        prefix_kv_lens=None,
++        suffix_kv_lens=None,
++    )
++    attention = InklingAttention.__new__(InklingAttention)
++    torch.nn.Module.__init__(attention)
++    attention.prefix = "test.layer"
++    attention.rel_extent = rel_extent
++    attention.head_dim = q.shape[-1]
++    attention.scaling = 1.0 / attention.head_dim
++    attention.window_size = (-1, -1) if local_extent is None else (local_extent - 1, 0)
++    attention._use_triton_attention = True
++    attention.kv_cache = case["packed"]
++    assert attention.get_attn_backend() is FlashAttentionBackend
++    monkeypatch.setattr(
++        "vllm.models.inkling.nvidia.attention.get_forward_context",
++        lambda: SimpleNamespace(attn_metadata={attention.prefix: metadata}),
++    )
++
++    first_output = None
++    for rel_logits in (torch.zeros_like(case["rel_logits"]), case["rel_logits"]):
++        actual = torch.empty_like(q)
++        attention._attention(q, rel_logits, actual)
++        flex_metadata.score_mod = _make_flex_score_mod(rel_logits, rel_extent)
++        flex_metadata.transformed_score_mod = flex_metadata.get_transformed_score_mod()
++        flex_out = torch.empty_like(q)
++        flex_impl.forward(
++            layer=attention,
++            query=q,
++            key=q.new_empty((0,)),
++            value=q.new_empty((0,)),
++            kv_cache=case["packed"],
++            attn_metadata=flex_metadata,
++            output=flex_out,
++        )
++        expected = _ref_rel_attn(
++            q,
++            case["key_cache"],
++            case["value_cache"],
++            rel_logits,
++            q_lens=case["q_lens"],
++            kv_lens=case["kv_lens"],
++            block_table=case["block_table"],
++            scale=attention.scaling,
++            rel_extent=rel_extent,
++            window_left=None if local_extent is None else local_extent - 1,
++        )
++        for result in (actual, flex_out):
++            assert torch.isfinite(result).all()
++            torch.testing.assert_close(
++                result.float(), expected.float(), atol=0.02, rtol=0.02
++            )
++        torch.testing.assert_close(
++            actual.float(), flex_out.float(), atol=0.02, rtol=0.02
++        )
++        if first_output is None:
++            first_output = actual
++        else:
++            assert (actual.float() - first_output.float()).abs().max() > 1e-3
++
++
+ @pytest.mark.skipif(not current_platform.is_cuda(), reason="requires CUDA")
+ @pytest.mark.skipif(
+     _cap is None or _cap.major < 9,
+@@ -334,8 +666,8 @@ def test_score_mod_relative_attention(monkeypatch):
+ 
+ @pytest.mark.skipif(not current_platform.is_cuda(), reason="requires CUDA")
+ @pytest.mark.skipif(
+-    _cap is None or _cap.major < 9,
+-    reason="FA4 score-mod requires Hopper+ (SM90+)",
++    _cap is None or _cap.major < 8,
++    reason="requires SM8x Triton or SM90+ FA4",
+ )
+ @pytest.mark.parametrize("num_heads", NUM_HEADS)
+ @pytest.mark.parametrize(
+@@ -359,8 +691,8 @@ def test_full_attention(seq_lens, num_heads, rel_extent):
+ 
+ @pytest.mark.skipif(not current_platform.is_cuda(), reason="requires CUDA")
+ @pytest.mark.skipif(
+-    _cap is None or _cap.major < 9,
+-    reason="FA4 score-mod requires Hopper+ (SM90+)",
++    _cap is None or _cap.major < 8,
++    reason="requires SM8x Triton or SM90+ FA4",
+ )
+ @pytest.mark.parametrize("num_heads", NUM_HEADS)
+ @pytest.mark.parametrize(
+@@ -380,8 +712,8 @@ def test_chunked_prefill(seq_lens, num_heads, rel_extent):
+ 
+ @pytest.mark.skipif(not current_platform.is_cuda(), reason="requires CUDA")
+ @pytest.mark.skipif(
+-    _cap is None or _cap.major < 9,
+-    reason="FA4 score-mod requires Hopper+ (SM90+)",
++    _cap is None or _cap.major < 8,
++    reason="requires SM8x Triton or SM90+ FA4",
+ )
+ @pytest.mark.parametrize("num_heads", NUM_HEADS)
+ @pytest.mark.parametrize(
+@@ -409,8 +741,8 @@ def test_sliding_window(seq_lens, num_heads, local_extent):
+ 
+ @pytest.mark.skipif(not current_platform.is_cuda(), reason="requires CUDA")
+ @pytest.mark.skipif(
+-    _cap is None or _cap.major < 9,
+-    reason="FA4 score-mod requires Hopper+ (SM90+)",
++    _cap is None or _cap.major < 8,
++    reason="requires SM8x Triton or SM90+ FA4",
+ )
+ @pytest.mark.parametrize("num_heads", NUM_HEADS)
+ @pytest.mark.parametrize(
+diff --git a/vllm/models/inkling/amd/ops/fa4_rel_attention.py b/vllm/models/inkling/amd/ops/fa4_rel_attention.py
+index d448ac8e2..3efeefcf1 100644
+--- a/vllm/models/inkling/amd/ops/fa4_rel_attention.py
++++ b/vllm/models/inkling/amd/ops/fa4_rel_attention.py
+@@ -19,8 +19,10 @@ from vllm.models.inkling.amd.ops.rel_attention_decode import (
+     inkling_rel_attention_split_kv_decode,
+     use_split_kv_decode,
+ )
++from vllm.models.inkling.common.triton_rel_attention import (
++    inkling_triton_rel_attention,
++)
+ from vllm.platforms.rocm import on_gfx950
+-from vllm.triton_utils import tl, triton
+ 
+ 
+ def bucket_max_seqlen_q(max_seqlen_q: int) -> int:
+@@ -99,187 +101,6 @@ def inkling_fa4_num_splits(
+     )
+ 
+ 
+-@triton.heuristics(
+-    {
+-        "BLOCK_D": lambda args: triton.next_power_of_2(args["head_dim"]),
+-        "BLOCK_H": lambda args: triton.next_power_of_2(args["gqa_group_size"]),
+-        "BLOCK_QH": lambda args: (
+-            args["BLOCK_Q"] * triton.next_power_of_2(args["gqa_group_size"])
+-        ),
+-    }
+-)
+-@triton.jit(do_not_specialize_on_alignment=["cache_seqlens", "cu_seqlens_q"])
+-def _inkling_rel_attention_kernel(
+-    q_ptr,  # [total_q, Hq, D]
+-    k_ptr,  # [blocks, page, Hkv, D]
+-    v_ptr,  # [blocks, page, Hkv, D]
+-    rel_ptr,  # [total_q, Hq, rel_extent]
+-    out_ptr,  # [total_q, Hq, D]
+-    block_table_ptr,  # [batch, max_pages]
+-    cache_seqlens,
+-    cu_seqlens_q,
+-    gqa_group_size,
+-    head_dim,
+-    softmax_scale,
+-    stride_q_t,
+-    stride_q_h,
+-    stride_q_d,
+-    stride_k_b,
+-    stride_k_p,
+-    stride_k_h,
+-    stride_k_d,
+-    stride_v_b,
+-    stride_v_p,
+-    stride_v_h,
+-    stride_v_d,
+-    stride_r_t,
+-    stride_r_h,
+-    stride_r_e,
+-    stride_o_t,
+-    stride_o_h,
+-    stride_o_d,
+-    stride_bt_b,
+-    page_size: tl.constexpr,
+-    rel_extent: tl.constexpr,
+-    window_left: tl.constexpr,
+-    BLOCK_Q: tl.constexpr,
+-    BLOCK_K: tl.constexpr,
+-    BLOCK_D: tl.constexpr,
+-    BLOCK_H: tl.constexpr,
+-    BLOCK_QH: tl.constexpr,
+-):
+-    # A program owns BLOCK_Q query positions and every query head sharing one
+-    # KV head. This makes the QK/PV operations MFMA-friendly on CDNA.
+-    pid_q = tl.program_id(0)
+-    pid_kh = tl.program_id(1)
+-    pid_b = tl.program_id(2)
+-
+-    q_start = tl.load(cu_seqlens_q + pid_b)
+-    q_len = tl.load(cu_seqlens_q + pid_b + 1) - q_start
+-    q_block = pid_q * BLOCK_Q
+-    if q_block >= q_len:
+-        return
+-
+-    kv_len = tl.load(cache_seqlens + pid_b)
+-    prefix_len = kv_len - q_len
+-    q_head_start = pid_kh * gqa_group_size
+-    bt_row = block_table_ptr + pid_b * stride_bt_b
+-
+-    q_block_ptr = tl.make_block_ptr(
+-        base=q_ptr + q_start * stride_q_t + q_head_start * stride_q_h,
+-        shape=(q_len, gqa_group_size, head_dim),
+-        strides=(stride_q_t, stride_q_h, stride_q_d),
+-        offsets=(q_block, 0, 0),
+-        block_shape=(BLOCK_Q, BLOCK_H, BLOCK_D),
+-        order=(2, 1, 0),
+-    )
+-    q = tl.load(q_block_ptr, boundary_check=(0, 1, 2), padding_option="zero")
+-    q = tl.reshape(q, (BLOCK_QH, BLOCK_D))
+-
+-    q_rows = q_block + tl.arange(0, BLOCK_Q)
+-    q_abs = prefix_len + q_rows
+-    q_valid = q_rows < q_len
+-    off_d = tl.arange(0, BLOCK_D)
+-    d_valid = off_d < head_dim
+-
+-    m_i = tl.full((BLOCK_QH,), float("-inf"), dtype=tl.float32)
+-    l_i = tl.zeros((BLOCK_QH,), dtype=tl.float32)
+-    acc = tl.zeros((BLOCK_QH, BLOCK_D), dtype=tl.float32)
+-    log2e: tl.constexpr = 1.4426950408889634
+-
+-    for k_start in range(0, kv_len, BLOCK_K):
+-        k_pos = k_start + tl.arange(0, BLOCK_K)
+-        k_valid = k_pos < kv_len
+-        # Masked lanes still need an in-range page-table load.
+-        safe_pos = tl.minimum(k_pos, tl.maximum(kv_len - 1, 0))
+-        page = tl.load(bt_row + safe_pos // page_size).to(tl.int64)
+-        page_off = safe_pos % page_size
+-
+-        k = tl.load(
+-            k_ptr
+-            + page[None, :] * stride_k_b
+-            + page_off[None, :] * stride_k_p
+-            + pid_kh * stride_k_h
+-            + off_d[:, None] * stride_k_d,
+-            mask=d_valid[:, None] & k_valid[None, :],
+-            other=0.0,
+-        )
+-        scores = tl.dot(q, k) * (softmax_scale * log2e)
+-
+-        dist = q_abs[:, None] - k_pos[None, :]
+-        score_valid = q_valid[:, None] & k_valid[None, :] & (dist >= 0)
+-        if window_left >= 0:
+-            score_valid &= dist <= window_left
+-
+-        # rel_logits is query- and head-dependent. Expand [Q, K] distance
+-        # indices across the GQA heads, then flatten to match QK's row order.
+-        off_h = tl.arange(0, BLOCK_H)
+-        rel_dist = dist[:, None, :]
+-        rel_valid = (
+-            q_valid[:, None, None]
+-            & (off_h[None, :, None] < gqa_group_size)
+-            & (rel_dist >= 0)
+-            & (rel_dist < rel_extent)
+-        )
+-        safe_dist = tl.maximum(0, tl.minimum(rel_dist, rel_extent - 1))
+-        bias = tl.load(
+-            rel_ptr
+-            + (q_start + q_rows[:, None, None]) * stride_r_t
+-            + (q_head_start + off_h[None, :, None]) * stride_r_h
+-            + safe_dist * stride_r_e,
+-            mask=rel_valid,
+-            other=0.0,
+-        )
+-        bias = tl.reshape(bias, (BLOCK_QH, BLOCK_K))
+-        scores += bias.to(tl.float32) * log2e
+-        score_valid = tl.reshape(
+-            score_valid[:, None, :] & (off_h[None, :, None] < gqa_group_size),
+-            (BLOCK_QH, BLOCK_K),
+-        )
+-        scores = tl.where(score_valid, scores, float("-inf"))
+-
+-        m_ij = tl.maximum(m_i, tl.max(scores, axis=1))
+-        has_scores = tl.sum(score_valid.to(tl.int32), axis=1) > 0
+-        # A sliding-window query can have entire early KV tiles masked. Avoid
+-        # the -inf - -inf NaN in online softmax until its first live tile.
+-        alpha = tl.where(has_scores, tl.exp2(m_i - m_ij), 1.0)
+-        p = tl.where(
+-            score_valid,
+-            tl.exp2(scores - m_ij[:, None]),
+-            0.0,
+-        )
+-        l_i = l_i * alpha + tl.sum(p, axis=1)
+-        acc *= alpha[:, None]
+-
+-        v = tl.load(
+-            v_ptr
+-            + page[:, None] * stride_v_b
+-            + page_off[:, None] * stride_v_p
+-            + pid_kh * stride_v_h
+-            + off_d[None, :] * stride_v_d,
+-            mask=k_valid[:, None] & d_valid[None, :],
+-            other=0.0,
+-        )
+-        acc += tl.dot(p.to(v.dtype), v)
+-        m_i = m_ij
+-
+-    acc /= l_i[:, None]
+-    acc = tl.reshape(acc, (BLOCK_Q, BLOCK_H, BLOCK_D))
+-    out_block_ptr = tl.make_block_ptr(
+-        base=out_ptr + q_start * stride_o_t + q_head_start * stride_o_h,
+-        shape=(q_len, gqa_group_size, head_dim),
+-        strides=(stride_o_t, stride_o_h, stride_o_d),
+-        offsets=(q_block, 0, 0),
+-        block_shape=(BLOCK_Q, BLOCK_H, BLOCK_D),
+-        order=(2, 1, 0),
+-    )
+-    tl.store(
+-        out_block_ptr,
+-        acc.to(out_ptr.dtype.element_ty),
+-        boundary_check=(0, 1, 2),
+-    )
+-
+-
+ @torch.no_grad()
+ def inkling_fa4_rel_attention(
+     q: torch.Tensor,
+@@ -316,8 +137,6 @@ def inkling_fa4_rel_attention(
+         raise ValueError("query heads must be divisible by KV heads")
+     if out is None:
+         out = torch.empty_like(q)
+-    gqa_group_size = q.shape[1] // num_kv_heads
+-    batch = cu_seqlens_q.shape[0] - 1
+     if max_kv_len is None:
+         max_kv_len = key_cache.shape[0] * key_cache.shape[1]
+     if use_gfx950_gluon_decode(
+@@ -395,44 +214,19 @@ def inkling_fa4_rel_attention(
+             max_kv_len=max_kv_len,
+             out=out,
+         )
+-    block_q = 1 if max_seqlen_q == 1 else 4
+-    grid = (triton.cdiv(max_seqlen_q, block_q), num_kv_heads, batch)
+-    _inkling_rel_attention_kernel[grid](
++    return inkling_triton_rel_attention(
+         q,
+         key_cache,
+         value_cache,
+-        rel_logits,
+-        out,
+-        block_table,
+-        cache_seqlens,
+-        cu_seqlens_q,
+-        gqa_group_size,
+-        q.shape[2],
+-        softmax_scale,
+-        q.stride(0),
+-        q.stride(1),
+-        q.stride(2),
+-        key_cache.stride(0),
+-        key_cache.stride(1),
+-        key_cache.stride(2),
+-        key_cache.stride(3),
+-        value_cache.stride(0),
+-        value_cache.stride(1),
+-        value_cache.stride(2),
+-        value_cache.stride(3),
+-        rel_logits.stride(0),
+-        rel_logits.stride(1),
+-        rel_logits.stride(2),
+-        out.stride(0),
+-        out.stride(1),
+-        out.stride(2),
+-        block_table.stride(0),
+-        page_size=key_cache.shape[1],
++        block_table=block_table,
++        cache_seqlens=cache_seqlens,
++        cu_seqlens_q=cu_seqlens_q,
++        max_seqlen_q=max_seqlen_q,
++        softmax_scale=softmax_scale,
++        causal=causal,
++        window_size=window_size,
+         rel_extent=rel_extent,
+-        window_left=window_size[0],
+-        BLOCK_Q=block_q,
+-        BLOCK_K=64,
+-        num_warps=4,
+-        num_stages=1,
++        rel_logits=rel_logits,
++        max_kv_len=max_kv_len,
++        out=out,
+     )
+-    return out
+diff --git a/vllm/models/inkling/amd/ops/rel_attention_decode.py b/vllm/models/inkling/amd/ops/rel_attention_decode.py
+index 810eb9cb5..fb2c04e34 100644
+--- a/vllm/models/inkling/amd/ops/rel_attention_decode.py
++++ b/vllm/models/inkling/amd/ops/rel_attention_decode.py
+@@ -1,403 +1,13 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-# SPDX-License-Identifier: MIT
+-# Copyright (c) 2026 LightSeek Foundation
+-#
+-# Permission is hereby granted, free of charge, to any person obtaining a copy
+-# of this software and associated documentation files (the "Software"), to deal
+-# in the Software without restriction, including without limitation the rights
+-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+-# copies of the Software, and to permit persons to whom the Software is
+-# furnished to do so, subject to the following conditions:
+-#
+-# The above copyright notice and this permission notice shall be included in
+-# all copies or substantial portions of the Software.
+-#
+-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-# SOFTWARE.
+-"""Split-KV decode for Inkling relative attention on ROCm.
+-
+-Adapted from LightSeek TokenSpeed's portable Triton relative-MHA decode.
+-"""
+-
+-from __future__ import annotations
+-
+-import os
+-
+-import torch
+-
+-from vllm.triton_utils import tl, triton
+-
+-_MIN_BLOCK_KV = tl.constexpr(32)
+-
+-
+-def decode_split_count(max_kv_len: int, window_left: int) -> int:
+-    """Return the number of parallel KV partitions for decode."""
+-    if window_left >= 0:
+-        effective_len = max(1, min(max_kv_len, window_left + 1))
+-        return min(4, max(1, triton.cdiv(effective_len, 128)))
+-    return min(32, max(1, triton.cdiv(max(1, max_kv_len), 2048)))
+-
+-
+-def use_split_kv_decode(
+-    *,
+-    max_query_len: int,
+-    max_kv_len: int,
+-    page_size: int,
+-    window_left: int,
+-) -> bool:
+-    """Select split-KV only where it outperforms the single-pass kernel."""
+-    if os.getenv("INKLING_SPLIT_KV", "1") != "1":
+-        return False
+-    if max_query_len != 1:
+-        return False
+-    if page_size >= 64:
+-        return True
+-    if window_left >= 0:
+-        return page_size >= 32
+-    return max_kv_len >= 8192
+-
+-
+-@triton.jit
+-def _split_kv_stage1(
+-    q_ptr,
+-    rel_ptr,
+-    k_ptr,
+-    v_ptr,
+-    block_table_ptr,
+-    cache_seqlens,
+-    mid_out_ptr,
+-    mid_lse_ptr,
+-    softmax_scale,
+-    stride_q_t,
+-    stride_q_h,
+-    stride_k_b,
+-    stride_k_p,
+-    stride_k_h,
+-    stride_k_d,
+-    stride_v_b,
+-    stride_v_p,
+-    stride_v_h,
+-    stride_v_d,
+-    stride_r_t,
+-    stride_r_h,
+-    stride_r_e,
+-    stride_mo_t,
+-    stride_mo_h,
+-    stride_mo_s,
+-    stride_ml_t,
+-    stride_ml_h,
+-    stride_ml_s,
+-    stride_bt_b: tl.constexpr,
+-    page_size: tl.constexpr,
+-    window_left: tl.constexpr,
+-    gqa_group_size: tl.constexpr,
+-    num_q_heads: tl.constexpr,
+-    head_dim: tl.constexpr,
+-    rel_extent: tl.constexpr,
+-    max_kv_splits: tl.constexpr,
+-    BLOCK_D: tl.constexpr,
+-    BLOCK_H: tl.constexpr,
+-    BLOCK_N: tl.constexpr,
+-):
+-    pid_t = tl.program_id(0)
+-    pid_h = tl.program_id(1)
+-    pid_s = tl.program_id(2)
+-
+-    head_blocks_per_kv = tl.cdiv(gqa_group_size, BLOCK_H)
+-    kv_head = pid_h // head_blocks_per_kv
+-    valid_block_h: tl.constexpr = min(BLOCK_H, gqa_group_size)
+-    off_h = pid_h * valid_block_h + tl.arange(0, BLOCK_H)
+-    h_valid = (off_h < (pid_h + 1) * valid_block_h) & (off_h < num_q_heads)
+-    off_d = tl.arange(0, BLOCK_D)
+-    d_valid = off_d < head_dim
+-
+-    cache_len = tl.load(cache_seqlens + pid_t)
+-    effective_len = (
+-        tl.minimum(cache_len, window_left + 1) if window_left >= 0 else cache_len
+-    )
+-    kv_offset = cache_len - effective_len
+-    split_len = (
+-        tl.cdiv(tl.cdiv(effective_len, max_kv_splits), _MIN_BLOCK_KV) * _MIN_BLOCK_KV
+-    )
+-    split_start = split_len * pid_s
+-    split_end = tl.minimum(split_start + split_len, effective_len)
+-
+-    q_offsets = pid_t * stride_q_t + off_h[:, None] * stride_q_h + off_d[None, :]
+-    row_max = tl.full((BLOCK_H,), float("-inf"), dtype=tl.float32)
+-    row_sum = tl.zeros((BLOCK_H,), dtype=tl.float32)
+-    acc = tl.zeros((BLOCK_H, BLOCK_D), dtype=tl.float32)
+-
+-    if split_end > split_start:
+-        q = tl.load(
+-            q_ptr + q_offsets,
+-            mask=h_valid[:, None] & d_valid[None, :],
+-            other=0.0,
+-        )
+-        for start_n in range(split_start, split_end, BLOCK_N):
+-            off_n = start_n + tl.arange(0, BLOCK_N)
+-            n_valid = off_n < split_end
+-            token_idx = kv_offset + off_n
+-            logical_page = token_idx // page_size
+-            page_offset = token_idx % page_size
+-            physical_page = tl.load(
+-                block_table_ptr + pid_t * stride_bt_b + logical_page,
+-                mask=n_valid,
+-                other=0,
+-            )
+-            k_offsets = (
+-                physical_page[None, :].to(tl.int64) * stride_k_b
+-                + page_offset[None, :] * stride_k_p
+-                + kv_head * stride_k_h
+-                + off_d[:, None] * stride_k_d
+-            )
+-            k = tl.load(
+-                k_ptr + k_offsets,
+-                mask=d_valid[:, None] & n_valid[None, :],
+-                other=0.0,
+-            )
+-            scores = tl.dot(q, k.to(q.dtype)) * softmax_scale
+-
+-            rel_dist = cache_len - 1 - token_idx
+-            rel_valid = (rel_dist >= 0) & (rel_dist < rel_extent)
+-            rel_idx = tl.maximum(0, tl.minimum(rel_dist, rel_extent - 1))
+-            rel_offsets = (
+-                pid_t * stride_r_t
+-                + off_h[:, None] * stride_r_h
+-                + rel_idx[None, :] * stride_r_e
+-            )
+-            rel_bias = tl.load(
+-                rel_ptr + rel_offsets,
+-                mask=h_valid[:, None] & rel_valid[None, :] & n_valid[None, :],
+-                other=0.0,
+-            )
+-            scores += rel_bias.to(tl.float32)
+-            scores = tl.where(
+-                h_valid[:, None] & n_valid[None, :],
+-                scores,
+-                float("-inf"),
+-            )
+-
+-            v_offsets = (
+-                physical_page[:, None].to(tl.int64) * stride_v_b
+-                + page_offset[:, None] * stride_v_p
+-                + kv_head * stride_v_h
+-                + off_d[None, :] * stride_v_d
+-            )
+-            v = tl.load(
+-                v_ptr + v_offsets,
+-                mask=n_valid[:, None] & d_valid[None, :],
+-                other=0.0,
+-            )
+-
+-            next_max = tl.maximum(tl.max(scores, axis=1), row_max)
+-            old_scale = tl.exp(row_max - next_max)
+-            probs = tl.exp(scores - next_max[:, None])
+-            acc *= old_scale[:, None]
+-            acc += tl.dot(probs.to(v.dtype), v)
+-            row_sum = row_sum * old_scale + tl.sum(probs, axis=1)
+-            row_max = next_max
+-
+-        mid_out_offsets = (
+-            pid_t * stride_mo_t
+-            + off_h[:, None] * stride_mo_h
+-            + pid_s * stride_mo_s
+-            + off_d[None, :]
+-        )
+-        tl.store(
+-            mid_out_ptr + mid_out_offsets,
+-            acc / row_sum[:, None],
+-            mask=h_valid[:, None] & d_valid[None, :],
+-        )
+-        mid_lse_offsets = (
+-            pid_t * stride_ml_t + off_h * stride_ml_h + pid_s * stride_ml_s
+-        )
+-        tl.store(
+-            mid_lse_ptr + mid_lse_offsets,
+-            row_max + tl.log(row_sum),
+-            mask=h_valid,
+-        )
+-
+-
+-@triton.jit
+-def _split_kv_stage2(
+-    mid_out_ptr,
+-    mid_lse_ptr,
+-    out_ptr,
+-    cache_seqlens,
+-    stride_mo_t,
+-    stride_mo_h,
+-    stride_mo_s,
+-    stride_ml_t,
+-    stride_ml_h,
+-    stride_ml_s,
+-    stride_o_t,
+-    stride_o_h,
+-    window_left: tl.constexpr,
+-    head_dim: tl.constexpr,
+-    max_kv_splits: tl.constexpr,
+-    BLOCK_D: tl.constexpr,
+-):
+-    pid_t = tl.program_id(0)
+-    pid_h = tl.program_id(1)
+-
+-    cache_len = tl.load(cache_seqlens + pid_t)
+-    effective_len = (
+-        tl.minimum(cache_len, window_left + 1) if window_left >= 0 else cache_len
+-    )
+-    split_len = (
+-        tl.cdiv(tl.cdiv(effective_len, max_kv_splits), _MIN_BLOCK_KV) * _MIN_BLOCK_KV
+-    )
+-
+-    off_d = tl.arange(0, BLOCK_D)
+-    d_valid = off_d < head_dim
+-    row_max = -float("inf")
+-    row_sum = 0.0
+-    acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
+-
+-    for split_id in range(max_kv_splits):
+-        split_start = split_len * split_id
+-        split_end = tl.minimum(split_start + split_len, effective_len)
+-        if split_end > split_start:
+-            value = tl.load(
+-                mid_out_ptr
+-                + pid_t * stride_mo_t
+-                + pid_h * stride_mo_h
+-                + split_id * stride_mo_s
+-                + off_d,
+-                mask=d_valid,
+-                other=0.0,
+-            )
+-            split_lse = tl.load(
+-                mid_lse_ptr
+-                + pid_t * stride_ml_t
+-                + pid_h * stride_ml_h
+-                + split_id * stride_ml_s
+-            )
+-            next_max = tl.maximum(split_lse, row_max)
+-            old_scale = tl.exp(row_max - next_max)
+-            split_scale = tl.exp(split_lse - next_max)
+-            acc = acc * old_scale + value * split_scale
+-            row_sum = row_sum * old_scale + split_scale
+-            row_max = next_max
+-
+-    tl.store(
+-        out_ptr + pid_t * stride_o_t + pid_h * stride_o_h + off_d,
+-        acc / row_sum,
+-        mask=d_valid,
+-    )
+-
+-
+-@torch.no_grad()
+-def inkling_rel_attention_split_kv_decode(
+-    q: torch.Tensor,
+-    key_cache: torch.Tensor,
+-    value_cache: torch.Tensor,
+-    *,
+-    block_table: torch.Tensor,
+-    cache_seqlens: torch.Tensor,
+-    softmax_scale: float,
+-    window_left: int,
+-    rel_extent: int,
+-    rel_logits: torch.Tensor,
+-    max_kv_len: int,
+-    out: torch.Tensor,
+-) -> torch.Tensor:
+-    """Run split-KV relative attention for single-token decode."""
+-    num_kv_heads = key_cache.shape[2]
+-    gqa_group_size = q.shape[1] // num_kv_heads
+-    max_kv_splits = decode_split_count(max_kv_len, window_left)
+-    block_d = triton.next_power_of_2(q.shape[2])
+-    block_h = min(8, gqa_group_size)
+-
+-    mid_out = torch.empty(
+-        q.shape[0],
+-        q.shape[1],
+-        max_kv_splits,
+-        q.shape[2],
+-        dtype=torch.float32,
+-        device=q.device,
+-    )
+-    mid_lse = torch.empty(
+-        q.shape[0],
+-        q.shape[1],
+-        max_kv_splits,
+-        dtype=torch.float32,
+-        device=q.device,
+-    )
+-    stage1_grid = (
+-        q.shape[0],
+-        triton.cdiv(q.shape[1], block_h),
+-        max_kv_splits,
+-    )
+-    _split_kv_stage1[stage1_grid](
+-        q,
+-        rel_logits,
+-        key_cache,
+-        value_cache,
+-        block_table,
+-        cache_seqlens,
+-        mid_out,
+-        mid_lse,
+-        softmax_scale,
+-        q.stride(0),
+-        q.stride(1),
+-        key_cache.stride(0),
+-        key_cache.stride(1),
+-        key_cache.stride(2),
+-        key_cache.stride(3),
+-        value_cache.stride(0),
+-        value_cache.stride(1),
+-        value_cache.stride(2),
+-        value_cache.stride(3),
+-        rel_logits.stride(0),
+-        rel_logits.stride(1),
+-        rel_logits.stride(2),
+-        mid_out.stride(0),
+-        mid_out.stride(1),
+-        mid_out.stride(2),
+-        mid_lse.stride(0),
+-        mid_lse.stride(1),
+-        mid_lse.stride(2),
+-        block_table.stride(0),
+-        page_size=key_cache.shape[1],
+-        window_left=window_left,
+-        gqa_group_size=gqa_group_size,
+-        num_q_heads=q.shape[1],
+-        head_dim=q.shape[2],
+-        rel_extent=rel_extent,
+-        max_kv_splits=max_kv_splits,
+-        BLOCK_D=block_d,
+-        BLOCK_H=block_h,
+-        BLOCK_N=key_cache.shape[1],
+-        num_warps=4,
+-        num_stages=1,
+-    )
+-    stage2_grid = (q.shape[0], q.shape[1])
+-    _split_kv_stage2[stage2_grid](
+-        mid_out,
+-        mid_lse,
+-        out,
+-        cache_seqlens,
+-        mid_out.stride(0),
+-        mid_out.stride(1),
+-        mid_out.stride(2),
+-        mid_lse.stride(0),
+-        mid_lse.stride(1),
+-        mid_lse.stride(2),
+-        out.stride(0),
+-        out.stride(1),
+-        window_left=window_left,
+-        head_dim=q.shape[2],
+-        max_kv_splits=max_kv_splits,
+-        BLOCK_D=block_d,
+-        num_warps=4,
+-        num_stages=2,
+-    )
+-    return out
++"""Preserve the ROCm import path for the shared Triton decode implementation."""
++
++from vllm.models.inkling.common.triton_rel_attention_decode import (
++    decode_split_count as decode_split_count,
++)
++from vllm.models.inkling.common.triton_rel_attention_decode import (
++    inkling_rel_attention_split_kv_decode as inkling_rel_attention_split_kv_decode,
++)
++from vllm.models.inkling.common.triton_rel_attention_decode import (
++    use_split_kv_decode as use_split_kv_decode,
++)
+diff --git a/vllm/models/inkling/common/triton_rel_attention.py b/vllm/models/inkling/common/triton_rel_attention.py
+new file mode 100644
+index 000000000..df5b6b606
+--- /dev/null
++++ b/vllm/models/inkling/common/triton_rel_attention.py
+@@ -0,0 +1,306 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Shared Triton paged attention with Inkling's query-dependent relative bias."""
++
++from __future__ import annotations
++
++import torch
++
++from vllm.models.inkling.common.triton_rel_attention_decode import (
++    inkling_rel_attention_split_kv_decode,
++    use_split_kv_decode,
++)
++from vllm.platforms import current_platform
++from vllm.triton_utils import tl, triton
++
++
++@triton.heuristics(
++    {
++        "BLOCK_D": lambda args: triton.next_power_of_2(args["head_dim"]),
++        "BLOCK_H": lambda args: triton.next_power_of_2(args["gqa_group_size"]),
++        "BLOCK_QH": lambda args: (
++            args["BLOCK_Q"] * triton.next_power_of_2(args["gqa_group_size"])
++        ),
++    }
++)
++@triton.jit(do_not_specialize_on_alignment=["cache_seqlens", "cu_seqlens_q"])
++def _inkling_rel_attention_kernel(
++    q_ptr,  # [total_q, Hq, D]
++    k_ptr,  # [blocks, page, Hkv, D]
++    v_ptr,  # [blocks, page, Hkv, D]
++    rel_ptr,  # [total_q, Hq, rel_extent]
++    out_ptr,  # [total_q, Hq, D]
++    block_table_ptr,  # [batch, max_pages]
++    cache_seqlens,
++    cu_seqlens_q,
++    gqa_group_size,
++    head_dim,
++    softmax_scale,
++    stride_q_t,
++    stride_q_h,
++    stride_q_d,
++    stride_k_b,
++    stride_k_p,
++    stride_k_h,
++    stride_k_d,
++    stride_v_b,
++    stride_v_p,
++    stride_v_h,
++    stride_v_d,
++    stride_r_t,
++    stride_r_h,
++    stride_r_e,
++    stride_o_t,
++    stride_o_h,
++    stride_o_d,
++    stride_bt_b,
++    page_size: tl.constexpr,
++    rel_extent: tl.constexpr,
++    window_left: tl.constexpr,
++    BLOCK_Q: tl.constexpr,
++    BLOCK_K: tl.constexpr,
++    BLOCK_D: tl.constexpr,
++    BLOCK_H: tl.constexpr,
++    BLOCK_QH: tl.constexpr,
++):
++    # A program owns BLOCK_Q query positions and every query head sharing one
++    # KV head, reusing each KV tile across its grouped query heads.
++    pid_q = tl.program_id(0)
++    pid_kh = tl.program_id(1)
++    pid_b = tl.program_id(2)
++
++    q_start = tl.load(cu_seqlens_q + pid_b)
++    q_len = tl.load(cu_seqlens_q + pid_b + 1) - q_start
++    q_block = pid_q * BLOCK_Q
++    if q_block >= q_len:
++        return
++
++    kv_len = tl.load(cache_seqlens + pid_b)
++    prefix_len = kv_len - q_len
++    q_head_start = pid_kh * gqa_group_size
++    bt_row = block_table_ptr + pid_b * stride_bt_b
++
++    q_block_ptr = tl.make_block_ptr(
++        base=q_ptr + q_start * stride_q_t + q_head_start * stride_q_h,
++        shape=(q_len, gqa_group_size, head_dim),
++        strides=(stride_q_t, stride_q_h, stride_q_d),
++        offsets=(q_block, 0, 0),
++        block_shape=(BLOCK_Q, BLOCK_H, BLOCK_D),
++        order=(2, 1, 0),
++    )
++    q = tl.load(q_block_ptr, boundary_check=(0, 1, 2), padding_option="zero")
++    q = tl.reshape(q, (BLOCK_QH, BLOCK_D))
++
++    q_rows = q_block + tl.arange(0, BLOCK_Q)
++    q_abs = prefix_len + q_rows
++    q_valid = q_rows < q_len
++    off_d = tl.arange(0, BLOCK_D)
++    d_valid = off_d < head_dim
++
++    m_i = tl.full((BLOCK_QH,), float("-inf"), dtype=tl.float32)
++    l_i = tl.zeros((BLOCK_QH,), dtype=tl.float32)
++    acc = tl.zeros((BLOCK_QH, BLOCK_D), dtype=tl.float32)
++    log2e: tl.constexpr = 1.4426950408889634
++
++    for k_start in range(0, kv_len, BLOCK_K):
++        k_pos = k_start + tl.arange(0, BLOCK_K)
++        k_valid = k_pos < kv_len
++        # Masked lanes still need an in-range page-table load.
++        safe_pos = tl.minimum(k_pos, tl.maximum(kv_len - 1, 0))
++        page = tl.load(bt_row + safe_pos // page_size).to(tl.int64)
++        page_off = safe_pos % page_size
++
++        k = tl.load(
++            k_ptr
++            + page[None, :] * stride_k_b
++            + page_off[None, :] * stride_k_p
++            + pid_kh * stride_k_h
++            + off_d[:, None] * stride_k_d,
++            mask=d_valid[:, None] & k_valid[None, :],
++            other=0.0,
++        )
++        scores = tl.dot(q, k) * (softmax_scale * log2e)
++
++        dist = q_abs[:, None] - k_pos[None, :]
++        score_valid = q_valid[:, None] & k_valid[None, :] & (dist >= 0)
++        if window_left >= 0:
++            score_valid &= dist <= window_left
++
++        # rel_logits is query- and head-dependent. Expand [Q, K] distance
++        # indices across the GQA heads, then flatten to match QK's row order.
++        off_h = tl.arange(0, BLOCK_H)
++        rel_dist = dist[:, None, :]
++        rel_valid = (
++            q_valid[:, None, None]
++            & (off_h[None, :, None] < gqa_group_size)
++            & (rel_dist >= 0)
++            & (rel_dist < rel_extent)
++        )
++        safe_dist = tl.maximum(0, tl.minimum(rel_dist, rel_extent - 1))
++        bias = tl.load(
++            rel_ptr
++            + (q_start + q_rows[:, None, None]) * stride_r_t
++            + (q_head_start + off_h[None, :, None]) * stride_r_h
++            + safe_dist * stride_r_e,
++            mask=rel_valid,
++            other=0.0,
++        )
++        bias = tl.reshape(bias, (BLOCK_QH, BLOCK_K))
++        scores += bias.to(tl.float32) * log2e
++        score_valid = tl.reshape(
++            score_valid[:, None, :] & (off_h[None, :, None] < gqa_group_size),
++            (BLOCK_QH, BLOCK_K),
++        )
++        scores = tl.where(score_valid, scores, float("-inf"))
++
++        m_ij = tl.maximum(m_i, tl.max(scores, axis=1))
++        has_scores = tl.sum(score_valid.to(tl.int32), axis=1) > 0
++        # A sliding-window query can have entire early KV tiles masked. Avoid
++        # the -inf - -inf NaN in online softmax until its first live tile.
++        alpha = tl.where(has_scores, tl.exp2(m_i - m_ij), 1.0)
++        p = tl.where(
++            score_valid,
++            tl.exp2(scores - m_ij[:, None]),
++            0.0,
++        )
++        l_i = l_i * alpha + tl.sum(p, axis=1)
++        acc *= alpha[:, None]
++
++        v = tl.load(
++            v_ptr
++            + page[:, None] * stride_v_b
++            + page_off[:, None] * stride_v_p
++            + pid_kh * stride_v_h
++            + off_d[None, :] * stride_v_d,
++            mask=k_valid[:, None] & d_valid[None, :],
++            other=0.0,
++        )
++        acc += tl.dot(p.to(v.dtype), v)
++        m_i = m_ij
++
++    acc /= l_i[:, None]
++    acc = tl.reshape(acc, (BLOCK_Q, BLOCK_H, BLOCK_D))
++    out_block_ptr = tl.make_block_ptr(
++        base=out_ptr + q_start * stride_o_t + q_head_start * stride_o_h,
++        shape=(q_len, gqa_group_size, head_dim),
++        strides=(stride_o_t, stride_o_h, stride_o_d),
++        offsets=(q_block, 0, 0),
++        block_shape=(BLOCK_Q, BLOCK_H, BLOCK_D),
++        order=(2, 1, 0),
++    )
++    tl.store(
++        out_block_ptr,
++        acc.to(out_ptr.dtype.element_ty),
++        boundary_check=(0, 1, 2),
++    )
++
++
++@torch.no_grad()
++def inkling_triton_rel_attention(
++    q: torch.Tensor,
++    key_cache: torch.Tensor,
++    value_cache: torch.Tensor,
++    *,
++    block_table: torch.Tensor,
++    cache_seqlens: torch.Tensor,
++    cu_seqlens_q: torch.Tensor,
++    max_seqlen_q: int,
++    softmax_scale: float,
++    causal: bool,
++    window_size: tuple[int, int],
++    rel_extent: int,
++    rel_logits: torch.Tensor,
++    num_splits: int = 32,
++    max_kv_len: int | None = None,
++    out: torch.Tensor | None = None,
++) -> torch.Tensor:
++    """Paged varlen attention with Inkling's relative score modification."""
++    del num_splits
++    if not causal or window_size[1] not in (0, -1):
++        raise NotImplementedError("Inkling Triton attention requires causal masking")
++    if q.ndim != 3 or key_cache.ndim != 4 or value_cache.ndim != 4:
++        raise ValueError("expected q [T,H,D] and paged K/V [B,P,Hkv,D]")
++    if rel_logits.shape != (q.shape[0], q.shape[1], rel_extent):
++        raise ValueError(
++            f"relative logits have shape {tuple(rel_logits.shape)}, expected "
++            f"{(q.shape[0], q.shape[1], rel_extent)}"
++        )
++
++    num_kv_heads = key_cache.shape[2]
++    if q.shape[1] % num_kv_heads:
++        raise ValueError("query heads must be divisible by KV heads")
++    if out is None:
++        out = torch.empty_like(q)
++    gqa_group_size = q.shape[1] // num_kv_heads
++    batch = cu_seqlens_q.shape[0] - 1
++    if max_kv_len is None:
++        max_kv_len = key_cache.shape[0] * key_cache.shape[1]
++    if (
++        current_platform.is_cuda()
++        and max_seqlen_q == 1
++        and q.shape[0] == batch
++        and q.stride(-1) == out.stride(-1) == 1
++        and use_split_kv_decode(
++            max_query_len=max_seqlen_q,
++            max_kv_len=max_kv_len,
++            page_size=key_cache.shape[1],
++            window_left=window_size[0],
++        )
++    ):
++        return inkling_rel_attention_split_kv_decode(
++            q,
++            key_cache,
++            value_cache,
++            block_table=block_table,
++            cache_seqlens=cache_seqlens,
++            softmax_scale=softmax_scale,
++            window_left=window_size[0],
++            rel_extent=rel_extent,
++            rel_logits=rel_logits,
++            max_kv_len=max_kv_len,
++            out=out,
++        )
++    block_q = 1 if max_seqlen_q == 1 else 4
++    if current_platform.is_cuda():
++        # CUDA tensor-core dot products require at least 16 rows.
++        block_q = max(block_q, 16 // triton.next_power_of_2(gqa_group_size))
++    grid = (triton.cdiv(max_seqlen_q, block_q), num_kv_heads, batch)
++    _inkling_rel_attention_kernel[grid](
++        q,
++        key_cache,
++        value_cache,
++        rel_logits,
++        out,
++        block_table,
++        cache_seqlens,
++        cu_seqlens_q,
++        gqa_group_size,
++        q.shape[2],
++        softmax_scale,
++        q.stride(0),
++        q.stride(1),
++        q.stride(2),
++        key_cache.stride(0),
++        key_cache.stride(1),
++        key_cache.stride(2),
++        key_cache.stride(3),
++        value_cache.stride(0),
++        value_cache.stride(1),
++        value_cache.stride(2),
++        value_cache.stride(3),
++        rel_logits.stride(0),
++        rel_logits.stride(1),
++        rel_logits.stride(2),
++        out.stride(0),
++        out.stride(1),
++        out.stride(2),
++        block_table.stride(0),
++        page_size=key_cache.shape[1],
++        rel_extent=rel_extent,
++        window_left=window_size[0],
++        BLOCK_Q=block_q,
++        BLOCK_K=64,
++        num_warps=4,
++        num_stages=1,
++    )
++    return out
+diff --git a/vllm/models/inkling/common/triton_rel_attention_decode.py b/vllm/models/inkling/common/triton_rel_attention_decode.py
+new file mode 100644
+index 000000000..28909dab2
+--- /dev/null
++++ b/vllm/models/inkling/common/triton_rel_attention_decode.py
+@@ -0,0 +1,407 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++
++# SPDX-License-Identifier: MIT
++# Copyright (c) 2026 LightSeek Foundation
++#
++# Permission is hereby granted, free of charge, to any person obtaining a copy
++# of this software and associated documentation files (the "Software"), to deal
++# in the Software without restriction, including without limitation the rights
++# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++# copies of the Software, and to permit persons to whom the Software is
++# furnished to do so, subject to the following conditions:
++#
++# The above copyright notice and this permission notice shall be included in
++# all copies or substantial portions of the Software.
++#
++# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++# SOFTWARE.
++"""Split-KV decode for Inkling relative attention on ROCm and CUDA.
++
++Adapted from LightSeek TokenSpeed's portable Triton relative-MHA decode.
++"""
++
++from __future__ import annotations
++
++import os
++
++import torch
++
++from vllm.platforms import current_platform
++from vllm.triton_utils import tl, triton
++
++_MIN_BLOCK_KV = tl.constexpr(32)
++
++
++def decode_split_count(max_kv_len: int, window_left: int) -> int:
++    """Return the number of parallel KV partitions for decode."""
++    if window_left >= 0:
++        effective_len = max(1, min(max_kv_len, window_left + 1))
++        return min(4, max(1, triton.cdiv(effective_len, 128)))
++    return min(32, max(1, triton.cdiv(max(1, max_kv_len), 2048)))
++
++
++def use_split_kv_decode(
++    *,
++    max_query_len: int,
++    max_kv_len: int,
++    page_size: int,
++    window_left: int,
++) -> bool:
++    """Select split-KV only where it outperforms the single-pass kernel."""
++    if os.getenv("INKLING_SPLIT_KV", "1") != "1":
++        return False
++    if max_query_len != 1:
++        return False
++    # Avoid scanning an entire long prefix for small-page local decode on CUDA.
++    if current_platform.is_cuda() and max_kv_len >= 8192:
++        return True
++    if page_size >= 64:
++        return True
++    if window_left >= 0:
++        return page_size >= 32
++    return max_kv_len >= 8192
++
++
++@triton.jit
++def _split_kv_stage1(
++    q_ptr,
++    rel_ptr,
++    k_ptr,
++    v_ptr,
++    block_table_ptr,
++    cache_seqlens,
++    mid_out_ptr,
++    mid_lse_ptr,
++    softmax_scale,
++    stride_q_t,
++    stride_q_h,
++    stride_k_b,
++    stride_k_p,
++    stride_k_h,
++    stride_k_d,
++    stride_v_b,
++    stride_v_p,
++    stride_v_h,
++    stride_v_d,
++    stride_r_t,
++    stride_r_h,
++    stride_r_e,
++    stride_mo_t,
++    stride_mo_h,
++    stride_mo_s,
++    stride_ml_t,
++    stride_ml_h,
++    stride_ml_s,
++    stride_bt_b: tl.constexpr,
++    page_size: tl.constexpr,
++    window_left: tl.constexpr,
++    gqa_group_size: tl.constexpr,
++    num_q_heads: tl.constexpr,
++    head_dim: tl.constexpr,
++    rel_extent: tl.constexpr,
++    max_kv_splits: tl.constexpr,
++    BLOCK_D: tl.constexpr,
++    BLOCK_H: tl.constexpr,
++    BLOCK_N: tl.constexpr,
++):
++    pid_t = tl.program_id(0)
++    pid_h = tl.program_id(1)
++    pid_s = tl.program_id(2)
++
++    head_blocks_per_kv = tl.cdiv(gqa_group_size, BLOCK_H)
++    kv_head = pid_h // head_blocks_per_kv
++    valid_block_h: tl.constexpr = min(BLOCK_H, gqa_group_size)
++    off_h = pid_h * valid_block_h + tl.arange(0, BLOCK_H)
++    h_valid = (off_h < (pid_h + 1) * valid_block_h) & (off_h < num_q_heads)
++    off_d = tl.arange(0, BLOCK_D)
++    d_valid = off_d < head_dim
++
++    cache_len = tl.load(cache_seqlens + pid_t)
++    effective_len = (
++        tl.minimum(cache_len, window_left + 1) if window_left >= 0 else cache_len
++    )
++    kv_offset = cache_len - effective_len
++    split_len = (
++        tl.cdiv(tl.cdiv(effective_len, max_kv_splits), _MIN_BLOCK_KV) * _MIN_BLOCK_KV
++    )
++    split_start = split_len * pid_s
++    split_end = tl.minimum(split_start + split_len, effective_len)
++
++    q_offsets = pid_t * stride_q_t + off_h[:, None] * stride_q_h + off_d[None, :]
++    row_max = tl.full((BLOCK_H,), float("-inf"), dtype=tl.float32)
++    row_sum = tl.zeros((BLOCK_H,), dtype=tl.float32)
++    acc = tl.zeros((BLOCK_H, BLOCK_D), dtype=tl.float32)
++
++    if split_end > split_start:
++        q = tl.load(
++            q_ptr + q_offsets,
++            mask=h_valid[:, None] & d_valid[None, :],
++            other=0.0,
++        )
++        for start_n in range(split_start, split_end, BLOCK_N):
++            off_n = start_n + tl.arange(0, BLOCK_N)
++            n_valid = off_n < split_end
++            token_idx = kv_offset + off_n
++            logical_page = token_idx // page_size
++            page_offset = token_idx % page_size
++            physical_page = tl.load(
++                block_table_ptr + pid_t * stride_bt_b + logical_page,
++                mask=n_valid,
++                other=0,
++            )
++            k_offsets = (
++                physical_page[None, :].to(tl.int64) * stride_k_b
++                + page_offset[None, :] * stride_k_p
++                + kv_head * stride_k_h
++                + off_d[:, None] * stride_k_d
++            )
++            k = tl.load(
++                k_ptr + k_offsets,
++                mask=d_valid[:, None] & n_valid[None, :],
++                other=0.0,
++            )
++            scores = tl.dot(q, k.to(q.dtype)) * softmax_scale
++
++            rel_dist = cache_len - 1 - token_idx
++            rel_valid = (rel_dist >= 0) & (rel_dist < rel_extent)
++            rel_idx = tl.maximum(0, tl.minimum(rel_dist, rel_extent - 1))
++            rel_offsets = (
++                pid_t * stride_r_t
++                + off_h[:, None] * stride_r_h
++                + rel_idx[None, :] * stride_r_e
++            )
++            rel_bias = tl.load(
++                rel_ptr + rel_offsets,
++                mask=h_valid[:, None] & rel_valid[None, :] & n_valid[None, :],
++                other=0.0,
++            )
++            scores += rel_bias.to(tl.float32)
++            scores = tl.where(
++                h_valid[:, None] & n_valid[None, :],
++                scores,
++                float("-inf"),
++            )
++
++            v_offsets = (
++                physical_page[:, None].to(tl.int64) * stride_v_b
++                + page_offset[:, None] * stride_v_p
++                + kv_head * stride_v_h
++                + off_d[None, :] * stride_v_d
++            )
++            v = tl.load(
++                v_ptr + v_offsets,
++                mask=n_valid[:, None] & d_valid[None, :],
++                other=0.0,
++            )
++
++            next_max = tl.maximum(tl.max(scores, axis=1), row_max)
++            old_scale = tl.exp(row_max - next_max)
++            probs = tl.exp(scores - next_max[:, None])
++            acc *= old_scale[:, None]
++            acc += tl.dot(probs.to(v.dtype), v)
++            row_sum = row_sum * old_scale + tl.sum(probs, axis=1)
++            row_max = next_max
++
++        mid_out_offsets = (
++            pid_t * stride_mo_t
++            + off_h[:, None] * stride_mo_h
++            + pid_s * stride_mo_s
++            + off_d[None, :]
++        )
++        tl.store(
++            mid_out_ptr + mid_out_offsets,
++            acc / row_sum[:, None],
++            mask=h_valid[:, None] & d_valid[None, :],
++        )
++        mid_lse_offsets = (
++            pid_t * stride_ml_t + off_h * stride_ml_h + pid_s * stride_ml_s
++        )
++        tl.store(
++            mid_lse_ptr + mid_lse_offsets,
++            row_max + tl.log(row_sum),
++            mask=h_valid,
++        )
++
++
++@triton.jit
++def _split_kv_stage2(
++    mid_out_ptr,
++    mid_lse_ptr,
++    out_ptr,
++    cache_seqlens,
++    stride_mo_t,
++    stride_mo_h,
++    stride_mo_s,
++    stride_ml_t,
++    stride_ml_h,
++    stride_ml_s,
++    stride_o_t,
++    stride_o_h,
++    window_left: tl.constexpr,
++    head_dim: tl.constexpr,
++    max_kv_splits: tl.constexpr,
++    BLOCK_D: tl.constexpr,
++):
++    pid_t = tl.program_id(0)
++    pid_h = tl.program_id(1)
++
++    cache_len = tl.load(cache_seqlens + pid_t)
++    effective_len = (
++        tl.minimum(cache_len, window_left + 1) if window_left >= 0 else cache_len
++    )
++    split_len = (
++        tl.cdiv(tl.cdiv(effective_len, max_kv_splits), _MIN_BLOCK_KV) * _MIN_BLOCK_KV
++    )
++
++    off_d = tl.arange(0, BLOCK_D)
++    d_valid = off_d < head_dim
++    row_max = -float("inf")
++    row_sum = 0.0
++    acc = tl.zeros((BLOCK_D,), dtype=tl.float32)
++
++    for split_id in range(max_kv_splits):
++        split_start = split_len * split_id
++        split_end = tl.minimum(split_start + split_len, effective_len)
++        if split_end > split_start:
++            value = tl.load(
++                mid_out_ptr
++                + pid_t * stride_mo_t
++                + pid_h * stride_mo_h
++                + split_id * stride_mo_s
++                + off_d,
++                mask=d_valid,
++                other=0.0,
++            )
++            split_lse = tl.load(
++                mid_lse_ptr
++                + pid_t * stride_ml_t
++                + pid_h * stride_ml_h
++                + split_id * stride_ml_s
++            )
++            next_max = tl.maximum(split_lse, row_max)
++            old_scale = tl.exp(row_max - next_max)
++            split_scale = tl.exp(split_lse - next_max)
++            acc = acc * old_scale + value * split_scale
++            row_sum = row_sum * old_scale + split_scale
++            row_max = next_max
++
++    tl.store(
++        out_ptr + pid_t * stride_o_t + pid_h * stride_o_h + off_d,
++        acc / row_sum,
++        mask=d_valid,
++    )
++
++
++@torch.no_grad()
++def inkling_rel_attention_split_kv_decode(
++    q: torch.Tensor,
++    key_cache: torch.Tensor,
++    value_cache: torch.Tensor,
++    *,
++    block_table: torch.Tensor,
++    cache_seqlens: torch.Tensor,
++    softmax_scale: float,
++    window_left: int,
++    rel_extent: int,
++    rel_logits: torch.Tensor,
++    max_kv_len: int,
++    out: torch.Tensor,
++) -> torch.Tensor:
++    """Run split-KV relative attention for single-token decode."""
++    num_kv_heads = key_cache.shape[2]
++    gqa_group_size = q.shape[1] // num_kv_heads
++    max_kv_splits = decode_split_count(max_kv_len, window_left)
++    block_d = triton.next_power_of_2(q.shape[2])
++    block_h = 16 if current_platform.is_cuda() else min(8, gqa_group_size)
++
++    mid_out = torch.empty(
++        q.shape[0],
++        q.shape[1],
++        max_kv_splits,
++        q.shape[2],
++        dtype=torch.float32,
++        device=q.device,
++    )
++    mid_lse = torch.empty(
++        q.shape[0],
++        q.shape[1],
++        max_kv_splits,
++        dtype=torch.float32,
++        device=q.device,
++    )
++    stage1_grid = (
++        q.shape[0],
++        num_kv_heads * triton.cdiv(gqa_group_size, block_h),
++        max_kv_splits,
++    )
++    _split_kv_stage1[stage1_grid](
++        q,
++        rel_logits,
++        key_cache,
++        value_cache,
++        block_table,
++        cache_seqlens,
++        mid_out,
++        mid_lse,
++        softmax_scale,
++        q.stride(0),
++        q.stride(1),
++        key_cache.stride(0),
++        key_cache.stride(1),
++        key_cache.stride(2),
++        key_cache.stride(3),
++        value_cache.stride(0),
++        value_cache.stride(1),
++        value_cache.stride(2),
++        value_cache.stride(3),
++        rel_logits.stride(0),
++        rel_logits.stride(1),
++        rel_logits.stride(2),
++        mid_out.stride(0),
++        mid_out.stride(1),
++        mid_out.stride(2),
++        mid_lse.stride(0),
++        mid_lse.stride(1),
++        mid_lse.stride(2),
++        block_table.stride(0),
++        page_size=key_cache.shape[1],
++        window_left=window_left,
++        gqa_group_size=gqa_group_size,
++        num_q_heads=q.shape[1],
++        head_dim=q.shape[2],
++        rel_extent=rel_extent,
++        max_kv_splits=max_kv_splits,
++        BLOCK_D=block_d,
++        BLOCK_H=block_h,
++        BLOCK_N=key_cache.shape[1],
++        num_warps=4,
++        num_stages=1,
++    )
++    stage2_grid = (q.shape[0], q.shape[1])
++    _split_kv_stage2[stage2_grid](
++        mid_out,
++        mid_lse,
++        out,
++        cache_seqlens,
++        mid_out.stride(0),
++        mid_out.stride(1),
++        mid_out.stride(2),
++        mid_lse.stride(0),
++        mid_lse.stride(1),
++        mid_lse.stride(2),
++        out.stride(0),
++        out.stride(1),
++        window_left=window_left,
++        head_dim=q.shape[2],
++        max_kv_splits=max_kv_splits,
++        BLOCK_D=block_d,
++        num_warps=4,
++        num_stages=2,
++    )
++    return out
+diff --git a/vllm/models/inkling/nvidia/attention.py b/vllm/models/inkling/nvidia/attention.py
+index cc78b6e9b..c45a41e82 100644
+--- a/vllm/models/inkling/nvidia/attention.py
++++ b/vllm/models/inkling/nvidia/attention.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ from __future__ import annotations
+ 
++from functools import cache
+ from typing import cast
+ 
+ import torch
+@@ -17,6 +18,7 @@ from vllm.model_executor.layers.linear import (
+     RowParallelLinear,
+ )
+ from vllm.model_executor.layers.quantization import QuantizationConfig
++from vllm.platforms import current_platform
+ from vllm.utils.torch_utils import (
+     canonicalize_singleton_dim_strides,
+     kv_cache_dtype_str_to_dtype,
+@@ -32,6 +34,7 @@ from vllm.v1.kv_cache_interface import (
+     SlidingWindowSpec,
+ )
+ 
++from ..common.triton_rel_attention import inkling_triton_rel_attention
+ from ..configs import InklingModelConfig
+ from .layernorm import InklingRMSNorm
+ from .ops.fa4_rel_attention import (
+@@ -44,6 +47,12 @@ from .sconv_swa_attn import _K, _V, InklingConvState, InklingSconvMetadata
+ from .short_conv import InklingShortConv
+ 
+ 
++@cache
++def _use_sm8x_triton_attention() -> bool:
++    capability = current_platform.get_device_capability()
++    return capability is not None and capability.major == 8
++
++
+ def compute_log_scaling_tau(
+     positions: torch.Tensor, n_floor: int, alpha: float
+ ) -> torch.Tensor:
+@@ -90,6 +99,7 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+         self.log_scaling_alpha = config.log_scaling_alpha
+         # q/k are per-head RMS-normed (unit norm), so Inkling scales by 1/head_dim.
+         self.scaling = 1.0 / head_dim
++        self._use_triton_attention = _use_sm8x_triton_attention()
+ 
+         tp_size = get_tensor_model_parallel_world_size()
+         self.num_total_heads = num_heads
+@@ -157,7 +167,7 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+             local_extent if is_local else vllm_config.model_config.max_model_len
+         )
+ 
+-        # ---- KV-cache wiring (reuse FlashAttentionBackend for metadata) ----
++        # ---- KV-cache wiring ----
+         cache_config = vllm_config.cache_config
+         self.kv_cache_dtype = (
+             cache_config.cache_dtype if cache_config is not None else "auto"
+@@ -167,14 +177,16 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+         )
+         self.register_buffer("k_scale", torch.ones((), dtype=torch.float32))
+         self.register_buffer("v_scale", torch.ones((), dtype=torch.float32))
+-
+         compilation_config = vllm_config.compilation_config
+         if prefix in compilation_config.static_forward_context:
+             raise ValueError(f"Duplicate layer name: {prefix}")
+         compilation_config.static_forward_context[prefix] = self
+         self.kv_cache = torch.tensor([])  # replaced by bind_kv_cache
+ 
+-        if vllm_config.kernel_config.enable_jit_warmup:
++        if (
++            vllm_config.kernel_config.enable_jit_warmup
++            and not self._use_triton_attention
++        ):
+             _INKLING_FA4_REL_ATTENTION_KERNEL.register_warmup()
+ 
+     def get_attn_backend(self) -> type[AttentionBackend]:
+@@ -228,7 +240,7 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+             conv_meta = attn_metadata[self.conv_owner.prefix]
+             md = attn_metadata[self.prefix]
+             assert isinstance(conv_meta, InklingSconvMetadata)
+-            fa_md = cast(FlashAttentionMetadata, md)
++            slot_mapping = cast(FlashAttentionMetadata, md).slot_mapping
+             assert self.kv_cache.numel() > 0
+             assert self.conv_owner.kv_cache.numel() > 0
+             # One launch: K/V sconv (conv-cache insert + conv + residual),
+@@ -257,7 +269,7 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+                 conv_meta.seq_idx,
+                 conv_meta.slot_mapping,
+                 conv_meta.query_start,
+-                fa_md.slot_mapping,
++                slot_mapping,
+                 off_k,
+                 off_v,
+                 self.conv_owner.block_size,
+@@ -280,10 +292,28 @@ class InklingAttention(nn.Module, AttentionLayerBase):
+         attn_metadata = get_forward_context().attn_metadata
+         assert isinstance(attn_metadata, dict)
+         md = cast(FlashAttentionMetadata, attn_metadata[self.prefix])
+-
+         nt = md.num_actual_tokens
+         key_cache, value_cache = self._split_kv_cache()
+         max_seqlen_q = bucket_max_seqlen_q(md.max_query_len)
++        if self._use_triton_attention:
++            inkling_triton_rel_attention(
++                q[:nt],
++                key_cache,
++                value_cache,
++                block_table=md.block_table,
++                cache_seqlens=md.seq_lens,
++                cu_seqlens_q=md.query_start_loc,
++                max_seqlen_q=max_seqlen_q,
++                softmax_scale=self.scaling,
++                causal=True,
++                window_size=self.window_size,
++                rel_extent=self.rel_extent,
++                rel_logits=rel_logits[:nt],
++                max_kv_len=md.max_seq_len,
++                out=output[:nt],
++            )
++            return
++
+         num_splits = inkling_fa4_num_splits(
+             is_local=self.is_local,
+             batch_size=md.seq_lens.shape[0],

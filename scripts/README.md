@@ -121,6 +121,85 @@ exact pinned vLLM image. It captures hardware and NCCL facts and runs no-weight
 W8A16 and Inkling relative-attention probes. The job uploads one JSON artifact
 to the existing project bucket and copies it into `results/raw/`.
 
+`gcp/run_sm80_upstream_validation.py` validates the rebased upstream Inkling
+attention PR on one A100. Its default invocation prints a local preflight;
+`--execute` submits one job with a one-hour execution limit, retries disabled
+in its configuration, and cancellation/deletion on exit. The controller pins the parent
+vLLM wheel and verifies the committed PR files before transfer. The
+worker verifies the wheel and source hashes, runs the focused SM8x tests and
+the complete relative-attention test file, and records reports in `results/raw/`.
+
+For the Triton conversion, pass `--variant triton --candidate-commit <full SHA>`.
+That mode checks the six-file diff against the pinned parent, preserves the
+published FlexAttention implementation as a checksum-verified baseline, and
+also runs `benchmarks/kernels/inkling_sm8x_attention.py` plus matched two-layer
+BF16 generation through both backends. The tiny fixture uses nonzero short
+convolutions, local/global layers, and chunked prefill on one GPU. It does not
+download or evaluate the production model. Sources are compressed into the
+worker command, and all transferred files are SHA-256 checked after extraction.
+It downloads no model weights and performs no GitHub actions.
+
+The model report keeps exact greedy equality separate from numerical parity.
+Numerical parity requires matching loaded-parameter hashes, live attention
+agreement with FP32 references, identical fixed-history batch/chunk schedules,
+and full-vocabulary logprob agreement at 0.02
+absolute tolerance on both fixed histories and the shared greedy histories.
+Any first greedy divergence must be a near tie within 0.02 in both backends;
+it is still reported as a failed exact-greedy comparison. Model timings include
+reference observers and are not serving-performance measurements.
+The synthetic fixture uses four query heads and two KV heads, with asserted
+4-token convolution blocks and 16-token attention blocks. Equal page sizes
+avoid the separately tracked NVIDIA convolution-cache bug in vLLM PR #51951;
+that fix is not included in this attention patch.
+
+The separately authorized `--variant triton-tp4` mode uses one four-A100 job
+and restores the existing SHA-verified W8A16 production checkpoint. Fresh Flex
+and Triton processes share the same validation-only quantization support,
+bounded eager runtime, smoke prompts, 8K retrieval and fixed-history inputs.
+See [the TP4 execution contract and results](../docs/pr-55078-tp4-validation.md)
+before use. The completed retry passed both backends' semantic checks but
+failed the preset numerical-parity gate; it is not a production parity pass.
+Another GPU allocation requires fresh approval.
+
+The separately approved `--variant triton-tp4-diagnostic` follow-up runs fresh
+Flex, Flex repeat and Triton processes in one allocation. It adds clean score
+repeats and bounded, same-input FP32 attention references with activation hashes
+and samples. See [the diagnostic contract and retry allowance](../docs/pr-55078-tp4-diagnostics.md).
+The numerical gate stays unchanged; collecting diagnostics is not a parity pass.
+The completed diagnostic found large clean-repeat differences in both backends.
+The two authorized `--serialize-shared-experts` retries both stopped at their
+20-minute queue caps after regional resource errors, without running model tests.
+All temporary jobs were deleted; further GPU work requires fresh approval.
+
+A subsequent one-attempt approval after dinner allowed the serialized diagnostic
+to run. It completed all three processes but did not stabilize repeatability:
+clean-repeat maxima were 1.56168/1.81250 for Flex and 1.125 for Triton; the
+cross-backend maximum was 1.19277 against 0.1, also failing coverage. All smoke
+and retrieval checks passed. That job was deleted and independently verified
+absent at 2026-09-14 00:53 UTC. No further allocation is authorized.
+
+`gpu/tp4_attention_validation.py --tokenizer-preflight` prepares and validates
+all prompt IDs on CPU before model loading. `gpu/analyze_tp4_attention_report.py`
+replays the saved numerical comparison offline, including positions after the
+original comparator's first failure, without rerunning GPUs or relaxing gates.
+For diagnostic reports it also locates the first differing observed short-input
+layer and compares same-input kernel errors. Cross-process long-decode activation
+comparisons are excluded because the generated continuation token was not saved;
+the within-call long-decode reference checks remain valid.
+
+The worker clears the image's inherited `UV_OVERRIDE` before installing into
+its separate virtual environment. The pinned image sets this variable for
+DeepEP's NCCL requirement; retaining it silently replaces the NCCL version
+required by Torch, even when installing an explicitly selected local wheel.
+`--no-config` and `--no-cache` do not disable that environment override. The
+worker keeps dependency verification as a required gate before pytest.
+
+```bash
+.venv/bin/python scripts/gcp/run_sm80_upstream_validation.py
+.venv/bin/python -m pytest tests/unit/test_sm80_upstream_validation.py -q
+.venv/bin/python scripts/gcp/run_sm80_upstream_validation.py --execute
+```
+
 `gcp/submit_vertex_flex_attention_spike.sh` tests the candidate generic
 FlexAttention repair on all four A100s. It executes global and local
 paged-cache fixtures with Inkling-style learned relative bias, compares each
