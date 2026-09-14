@@ -184,7 +184,7 @@ def install_diagnostics(model):
                 "bf16_rounding_vs_fp32": error_stats(reference.to(q.dtype), reference),
             }
             if getattr(attention, "_use_flex_attention", False):
-                from vllm.models.inkling.common.triton_rel_attention import (
+                from vllm.models.inkling.common.ops.triton_rel_attention import (
                     inkling_triton_rel_attention,
                 )
                 from vllm.models.inkling.nvidia.ops.fa4_rel_attention import bucket_max_seqlen_q

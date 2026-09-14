@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import torch
-from vllm.models.inkling.common.triton_rel_attention import inkling_triton_rel_attention
+from vllm.models.inkling.common.ops.triton_rel_attention import inkling_triton_rel_attention
 
 
 def load_tests(path):

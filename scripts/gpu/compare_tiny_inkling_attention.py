@@ -25,6 +25,25 @@ def validate_fixture_cache_geometry(*, hidden_size, kv_heads, head_dim, kernel_s
         raise ValueError("fixture would require cache-page unification; avoid #51951")
 
 
+def validate_model_facts(model_facts, backend):
+    expected_metadata_backend = {
+        "triton": "TritonAttentionBackend",
+        "flex": "FlexAttentionBackend",
+    }[backend]
+    assert model_facts, "no model facts returned"
+    for worker in model_facts:
+        assert len(worker["layers"]) == 2
+        assert all(layer[backend + "_selected"] for layer in worker["layers"])
+        assert all(
+            layer["metadata_backend"] == expected_metadata_backend for layer in worker["layers"]
+        ), "unexpected attention metadata backend"
+        assert all(
+            layer["conv_configured_block_size"] == layer["conv_bound_block_size"] == 4
+            and layer["attention_bound_block_size"] == 16
+            for layer in worker["layers"]
+        ), "fixture hit the separate convolution-cache block-size bug (#51951)"
+
+
 def build_fixture(builder_path, output):
     import torch
 
@@ -181,14 +200,7 @@ def main():
         seed=20260913,
     )
     model_facts = llm.apply_model(install_reference_checks)
-    for worker in model_facts:
-        assert len(worker["layers"]) == 2
-        assert all(layer[args.backend + "_selected"] for layer in worker["layers"])
-        assert all(
-            layer["conv_configured_block_size"] == layer["conv_bound_block_size"] == 4
-            and layer["attention_bound_block_size"] == 16
-            for layer in worker["layers"]
-        ), "fixture hit the separate convolution-cache block-size bug (#51951)"
+    validate_model_facts(model_facts, args.backend)
     prompts = [
         [1, 17, 29, 5, 41, 3, 11, 7],
         [1 + (7 * i) % 250 for i in range(35)],

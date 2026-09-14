@@ -10,7 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from scripts.gpu.compare_tiny_inkling_attention import validate_fixture_cache_geometry
+from scripts.gpu.compare_tiny_inkling_attention import (
+    validate_fixture_cache_geometry,
+    validate_model_facts,
+)
 from scripts.gpu.run_sm80_upstream_tests import (
     CommandError,
     compare_generations,
@@ -25,6 +28,30 @@ def test_fixture_avoids_the_separate_convolution_cache_page_bug():
     validate_fixture_cache_geometry(hidden_size=512, kv_heads=2, head_dim=128, kernel_size=4)
     with pytest.raises(ValueError, match="cache-page unification"):
         validate_fixture_cache_geometry(hidden_size=512, kv_heads=4, head_dim=128, kernel_size=4)
+
+
+@pytest.mark.parametrize("backend", ["triton", "flex"])
+def test_tiny_model_requires_the_selected_metadata_backend(backend):
+    expected = "TritonAttentionBackend" if backend == "triton" else "FlexAttentionBackend"
+    layers = [
+        {
+            "metadata_backend": expected,
+            backend + "_selected": True,
+            "conv_configured_block_size": 4,
+            "conv_bound_block_size": 4,
+            "attention_bound_block_size": 16,
+        }
+        for _ in range(2)
+    ]
+    facts = [{"layers": layers}]
+    validate_model_facts(facts, backend)
+    layers[1]["metadata_backend"] = "FlashAttentionBackend"
+    with pytest.raises(AssertionError, match="unexpected attention metadata backend"):
+        validate_model_facts(facts, backend)
+    layers[1]["metadata_backend"] = expected
+    layers[0]["conv_bound_block_size"] = 16
+    with pytest.raises(AssertionError, match="convolution-cache block-size bug"):
+        validate_model_facts(facts, backend)
 
 
 def _wheel(directory: Path, version: str) -> Path:

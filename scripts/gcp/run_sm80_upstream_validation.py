@@ -51,8 +51,9 @@ TRITON_FILES = (
     "vllm/models/inkling/nvidia/attention.py",
     "vllm/models/inkling/amd/ops/fa4_rel_attention.py",
     "vllm/models/inkling/amd/ops/rel_attention_decode.py",
-    "vllm/models/inkling/common/triton_rel_attention.py",
-    "vllm/models/inkling/common/triton_rel_attention_decode.py",
+    "vllm/models/inkling/common/ops/__init__.py",
+    "vllm/models/inkling/common/ops/triton_rel_attention.py",
+    "vllm/models/inkling/common/ops/triton_rel_attention_decode.py",
 )
 VALIDATION_FILES = (
     "benchmarks/kernels/inkling_sm8x_attention.py",
