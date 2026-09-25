@@ -1,14 +1,18 @@
-# PR #55078: local review follow-up
+# PR #55078: review follow-up
 
-Date: 2026-09-14. Status: **committed locally, A100 validation passed, cleanup
-verified, not published**.
+Run date: 2026-09-14. Status refreshed from GitHub on 2026-09-24:
+**published as the current head of open, reviewed, unmerged
+[PR #55078](https://github.com/vllm-project/vllm/pull/55078)**.
+The run's earlier "not published" status is historical; TP1 A100 validation
+passed and cleanup was verified at that run's conclusion.
 
-This follow-up is based on published commit
-`6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`, still on upstream
-`7ee8a6dd013819838da8012ca549d724bee7c6c6`. The earlier A100 results belong to
-that published commit, not to this follow-up. The reviewed candidate is now
-committed locally as `33c25ab75627d670eb90f084f2b3875145bcc06b`, with sign-off
-and AI attribution. All commit-time pre-commit hooks passed.
+The head is `33c25ab75627d670eb90f084f2b3875145bcc06b`, with direct Git parent
+`6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec` and tested upstream base/runtime
+wheel `7ee8a6dd013819838da8012ca549d724bee7c6c6`. The earlier A100 results
+belong to the parent candidate; the September 14 TP1 results below belong to
+this head. Sign-off, AI attribution and passing commit-time pre-commit hooks
+were recorded at the local checkpoint. No current-head TP4 parity result is
+established by the TP1 run.
 
 ## Review changes
 
@@ -74,8 +78,9 @@ the local checks alone did not establish it.
 ## Approved A100 run
 
 After reviewing the local changes, the user explicitly approved the local
-candidate commit and one bounded A100 run on 2026-09-14. There is no approval
-for a retry, TP4 run, push, public comment, or PR update.
+candidate commit and one bounded A100 run on 2026-09-14. That run's approval
+did not cover a retry, TP4 run, push, public comment, or PR update. The later
+publication state is recorded above; it does not extend the run's scope.
 
 The active-job inventory was empty before submission. Dry-run preflight
 confirmed the exact commit and source hashes, pinned parent wheel and image,
@@ -136,7 +141,8 @@ The controller observed `JOB_STATE_SUCCEEDED` at 06:12:40 UTC and completed
 deletion verification at 06:12:44 UTC. A separate read confirmed that the
 CustomJob was absent and the active-job inventory was empty. No retry was used.
 
-Evidence:
+Evidence (retained private raw artifacts; these links are inaccessible from
+the public source checkout and are not public downloads):
 
 - [Worker report](../results/raw/inkling-sm80-triton-20260914-060038.json),
   SHA-256 `585e1db2ca4e7cb088ab479ff1ec81d26d410088f50b50d8679dda20066c2532`.
@@ -153,6 +159,8 @@ comparison remains unresolved; these local changes do not turn it into a pass.
 
 At the preceding local-review checkpoint no GPU job had been submitted and
 no commit had been created. The subsequent approved commit and A100 submission
-are recorded above. Nothing has been pushed or posted. The historical PR patch
+are recorded above. Nothing was pushed or posted during that local validation
+window; the head's subsequently verified publication is recorded at the top.
+The historical PR patch
 and prior validation records were preserved. The unrelated untracked
 `vllm/models/inkling/nvidia/ops/flex_rel_attention 2.py` was left untouched.

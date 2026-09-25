@@ -3,6 +3,12 @@
 Status: implemented candidate controls and offline tooling; no optimized A100
 measurement or promotion claim yet.
 
+This program targets the historical W8A16 TP4 FlexAttention/Marlin path on
+four A100 80GB GPUs: vLLM `ffd46bfab2128bb84146050e98b51a617c6575ab` plus
+local patches 0001–0004. The newer upstream Triton PR's synthetic TP1 results
+do not validate these profiles or supply a production throughput measurement.
+See the [source identities and known limitations](known-limitations.md).
+
 ## Objective
 
 The serving target is usable wall time for one interactive agent and efficient

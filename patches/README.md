@@ -6,7 +6,12 @@ tests that do not require the full Inkling checkpoint.
 
 All patches target vLLM revision
 `ffd46bfab2128bb84146050e98b51a617c6575ab`. Patches 0001--0004 are the
-validated production set. Two isolated extensions branch from that base: the
+historically validated text-serving set (FlexAttention and Marlin, W8A16 TP4
+on four A100 80GB GPUs). That bounded evidence does not establish optimized
+throughput or production reliability. The newer submitted
+[Triton PR #55078](https://github.com/vllm-project/vllm/pull/55078) is a separate
+source/runtime path; see its [exact heads and validation limits](../docs/known-limitations.md).
+Two isolated extensions branch from the pinned production base: the
 multimodal image adds its audio/bounds patches, while the mechanistic research
 image adds its observer patch. The two extension modes are mutually exclusive
 until a combined runtime receives its own validation contract.

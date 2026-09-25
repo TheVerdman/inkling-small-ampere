@@ -1,6 +1,74 @@
 # Known limitations
 
-As of the final bounded Gate E hotfix acceptance on 2026-08-10:
+## Evidence identities as of 2026-09-24
+
+- **Historical full-checkpoint serving:**
+  `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`,
+  converted to W8A16, on four A100 80GB GPUs (TP4). Runtime: vLLM
+  `ffd46bfab2128bb84146050e98b51a617c6575ab`, [patches 0001–0004](../patches/README.md),
+  paged FlexAttention and Marlin. The 32-token completions and ten fixed smoke
+  cases establish bounded proof-of-life. Gate D's original cloud comparison
+  failed exact open-ended text matching; its later offline reconciliation
+  passed revised criteria. Gate E measured 239,997 input tokens, not a literal
+  256K request. See the [historical record](../STATUS.md).
+- **Submitted upstream Triton path:** [PR #55078](https://github.com/vllm-project/vllm/pull/55078)
+  is open, reviewed and unmerged at `33c25ab75627d670eb90f084f2b3875145bcc06b`.
+  Its direct Git parent is `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`;
+  the tested upstream base/runtime wheel is `7ee8a6dd013819838da8012ca549d724bee7c6c6`.
+  On September 14, one A100-SXM4-80GB ran TP1 eager synthetic tests with
+  Torch `2.13.0+cu130` and vLLM `0.1.1.dev75+g7ee8a6dd0`: 88 tests passed,
+  one Hopper-only test skipped, nine operator cases passed and 24 greedy
+  tiny-model tokens matched. Fixed-history maximum logprob difference was
+  `0.008028984` against `0.02`, with 32 live attention/FP32 checks per backend.
+  The reference used FlexAttention at `f9c773ade55bc45695c4d56510a87e395057704c`.
+  See the [run and backend details](pr-55078-review-followup.md).
+- **Older TP4 comparison:** candidate `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`
+  on the same upstream runtime base compared Triton with that Flex reference,
+  using the full W8A16 checkpoint on four A100 80GB GPUs and identical
+  validation-only WNA16-loader/Marlin compatibility ports. Ten semantic smoke
+  cases and an 8,200-token retrieval matched, but **556/852 logprobs exceeded
+  0.1**, maximum `1.381737709`, and one position had only 27 shared entries
+  against the required 28. The [failed gate](pr-55078-tp4-validation.md) remains
+  failed. Later [same-backend variation](pr-55078-tp4-diagnostics.md) prevents
+  attribution to an isolated Triton defect. TP1 success at the current PR head
+  does not establish current-head TP4 parity.
+
+None of these results establishes broad throughput, production reliability,
+live multimodal support or complete mechanistic validation. The
+[performance program](a100-serving-performance.md) retains the optimized
+CUDA-graph failure and the unmeasured eager candidate separately.
+
+## Publication and evidence access
+
+The repository is public (GitHub metadata checked 2026-09-24). References to
+ignored `results/raw/` artifacts and local-only bundles identify retained
+private evidence that is inaccessible from the public source checkout unless
+separately made available; they are not public downloads. No ignored raw
+results or model weights are included by this documentation update. The
+completed September 24 audit's 21 offline checks and
+14 Gate D/E artifact-hash comparisons were evidence checks, not new GPU results;
+they were not rerun in this documentation pass.
+
+Project code is Apache-2.0; existing licenses and notices remain unchanged.
+The [source manifest](../manifests/source-checkpoint.json) records a model-license
+declaration, but exact external model terms were not freshly verified. Neither
+that declaration nor this source release establishes weight-redistribution
+rights.
+
+Owner disclosure decision pending: whether the retained bucket/project
+identifiers in the [TP4 payload audit](pr-55078-tp4-validation.md#private-payload-destination-audit),
+personal bundle path in [STATUS.md](../STATUS.md), and endpoint/operation
+identifiers in the [Gate E manifest](../manifests/gate-e-production-context-validation-20260810.json)
+are intended public disclosures. These are identifiers and paths, not
+credentials. This pass leaves their values and immutable evidence unchanged;
+any alternative publication treatment needs a separate owner decision.
+
+## Historical Gate E limitations
+
+The following records the bounded Gate E hotfix acceptance on 2026-08-10 and
+subsequent offline work. Cloud state and quotas were not rechecked in this
+documentation pass; references to active resources or consumed authorizations
+describe those historical checkpoints.
 
 - Physical topology and driver details come from the preserved June 20 run
   because the pinned vLLM container lacks `nvidia-smi`; live GPU identity,

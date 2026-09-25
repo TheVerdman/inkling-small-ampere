@@ -5,14 +5,22 @@ Inkling-Small on one GCP `a2-ultragpu-4g` node. The first target is reproducible
 W8A16 inference across four A100 80GB GPUs; W8A8 is deferred until W8A16 is
 correct.
 
-Current result: **Gates C and D pass, and Gate E's direct-Vertex serving and
-production-topology context ladder pass.** The balanced TP4 W8A16 checkpoint
-is converted and checksum-verified. Two sequential fresh processes loaded it
-on four A100 80GB GPUs with the intended Marlin kernels, produced finite
-coherent 32-token completions, and independently matched all ten fixed smoke
-prompts. The exact hotfix image also passed live strict-JSON Responses and the
-2K, 8K, 32K, 64K, 128K, and 240K retrieval ladder on one production-shaped
-Vertex replica. See [STATUS.md](STATUS.md) for the exact evidence and scope.
+**Scope as of 2026-09-24:** this public repository contains Ampere inference
+and validation research. Historical W8A16 TP4 evidence uses vLLM
+`ffd46bfab2128bb84146050e98b51a617c6575ab` with local patches 0001–0004,
+paged FlexAttention and Marlin on four A100 80GB GPUs. It covers 32-token
+proof-of-life, ten fixed smoke cases and retrieval through **239,997 actual
+input tokens**, not a validated 256K request. Gate D's original cloud
+comparison failed on exact open-ended text matching; the later offline
+reconciliation passed under revised comparison criteria.
+
+The separate [upstream Triton PR #55078](https://github.com/vllm-project/vllm/pull/55078)
+is open and reviewed, not merged. Its current head has passing single-A100 TP1
+synthetic tests; the older TP4 comparison failed its numerical gate. Neither
+establishes current-head TP4 parity, broad throughput, live multimodal support,
+complete mechanistic validation or production reliability. See the
+[evidence identities and known limitations](docs/known-limitations.md) and
+[historical status record](STATUS.md).
 
 The repository now also contains an **offline-validated mechanistic research
 platform**: bounded MoE/router, residual, attention/MLP/expert, logit, KV, and
@@ -22,16 +30,19 @@ and an opt-in pinned-vLLM observer. The observer has not run on the real TP4
 checkpoint, so no GPU mechanistic or production-equivalence claim is promoted.
 See [Mechanistic interpretability runtime](docs/mechanistic-platform.md).
 
-Gate E now provides a fail-closed, **Responses-only** serving contract with 2K
-bring-up, 64K fallback, and 256K-configured candidate profiles. Serving quota
-is verified at exactly four custom-model A100 80GB GPUs. The immutable
-EOS-hotfix image restored the 253 GiB checkpoint on the A2 prediction root
-overlay, served strict JSON, and passed exact early/middle/late retrieval at a
+The historical Gate E result used a fail-closed, **Responses-only** serving
+contract with 2K bring-up, 64K fallback, and 256K-configured candidate profiles.
+Serving quota was verified at exactly four custom-model A100 80GB GPUs. The
+immutable EOS-hotfix image restored the 253 GiB checkpoint on the A2 prediction
+root overlay, served strict JSON, and passed exact early/middle/late retrieval at a
 maximum measured 240,000-token target (239,997 actual input tokens). The
 temporary Model and replica were removed immediately; one dedicated Endpoint
-is retained empty with a 3,600-second inference timeout. A continuously warm
-consumer edge remains separate work. See the [Gate E operationalization
+was retained empty with a 3,600-second inference timeout. Cloud state was not
+rechecked for this documentation update. A continuously warm consumer edge
+remains separate work. See the [Gate E operationalization
 record](docs/gate-e-operationalization.md).
+
+Historical Flex/Marlin evidence and memory projections:
 
 - Exact source: `thinkingmachines/Inkling-Small@b2d4f225a02032c5d154bff748ab5a00c5ca26e4`
 - Exact source payload: 265,956,439,090 elements and 495.382 GiB of tensor data
@@ -119,13 +130,18 @@ Its no-GPU local contract is:
 make multimodal-local-check
 ```
 
-The serving quota is now verified at exactly 4/4. Inspect the fail-closed
+The historical serving-quota check recorded exactly 4/4. Inspect the fail-closed
 Vertex request bodies, prediction bootstrap gates, conditional storage probe,
 and Responses edge without building an image or touching cloud state:
 
 ```bash
 make vertex-gate-e-dry-run
 ```
+
+The following storage-probe history predates the successful Gate E hotfix and
+239,997-token context run above. Those runs superseded the storage blocker and
+earlier text-serving image status; consumer-edge work remains separate. This
+history is not a current cloud inventory.
 
 The prior separately authorized no-retry training-quota context attempt is
 terminal and inconclusive; it stopped before model load. Do not rerun
@@ -172,7 +188,9 @@ artifact.
 
 ## Evidence
 
-Key durable outputs:
+Key durable outputs (local generated results and private raw artifacts are not
+all included in the public repository; see the
+[evidence-access scope](docs/known-limitations.md#publication-and-evidence-access)):
 
 - [Architecture and checkpoint anatomy](docs/architecture.md)
 - [W8A16 quantization design](docs/quantization-design.md)
@@ -215,13 +233,14 @@ Full conversion requires both gates:
 Gate A's memory model passes for balanced TP4, and its original attention
 blocker is resolved by patch 0001. Gate B passes through the real Inkling
 classes, expected Marlin kernels, four-rank TP/EP layouts, NCCL, and complete
-tiny-model generation. Gate C now passes for the full converted checkpoint,
+tiny-model generation. Gate C passed for the full converted checkpoint,
 and the real checkpoint has loaded and generated with measured HBM on four
-A100s. Gate D passes in two fresh processes on one provisioned worker;
-publication still requires task-quality and performance evaluation. Gate E is
-the warm endpoint phase: its local Responses contract and bounded
-training-quota context harness are implemented, but no cloud serving resource
-or context length beyond 2K has passed yet.
+A100s. Gate D's two fresh processes passed on one provisioned worker; its
+original failed cloud comparison and later offline reconciliation remain
+distinct. Gate E's earlier 2K-only status was superseded by live direct-Vertex
+strict JSON and the context ladder through 239,997 actual input tokens.
+Comparative task quality and optimized performance remain research work;
+these bounded results do not establish a continuously warm production service.
 
 ## Reproducibility baseline
 
@@ -230,8 +249,10 @@ or context length beyond 2K has passed yet.
 - Serving base: vLLM 0.26.0, CUDA 12.9.1, Python 3.12
 - vLLM revision: `ffd46bfab2128bb84146050e98b51a617c6575ab`
 - Serving image: pinned by a full Docker manifest digest in `Dockerfile`
-- Model and repository code licenses: Apache-2.0
+- Project code license: Apache-2.0; external model terms are separate
 - Experiment IDs: derived from canonical SHA-256 manifest hashes
 
-Model artifacts are not redistributed by this repository. Any later converted
-weights must retain the source license, provenance, and redistribution terms.
+Model artifacts are not redistributed by this repository. The source manifest
+records a model-license declaration; exact external model terms were not
+freshly verified. This documentation does not establish rights to redistribute
+source or converted weights. See [publication scope](docs/known-limitations.md#publication-and-evidence-access).

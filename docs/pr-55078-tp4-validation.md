@@ -1,5 +1,12 @@
 # PR #55078 bounded TP4 production comparison
 
+Historical run record for candidate `6ca6a72bdd4d0f1a40504d35f41a6e39bc9d0cec`.
+As checked on 2026-09-24, PR #55078 is open at the later
+`33c25ab75627d670eb90f084f2b3875145bcc06b` head; see the
+[TP1 review follow-up](pr-55078-review-followup.md). The failed TP4 gate below
+is preserved and does not constitute a current-head TP4 result. Authorization,
+publication and cleanup statements below describe the September 13 run.
+
 Authorized by the user in this task on 2026-09-13 after reviewing the matched
 TP4 plan. No PR push, edit, or public comment is authorized.
 
@@ -20,7 +27,8 @@ The user-approved retry is exhausted. No further GPU allocation or publication
 has been performed. CustomJob `889258212539236352` was deleted and independently
 verified absent; a separate active-job inventory was empty.
 
-Evidence:
+Evidence (retained private raw artifacts; these links are inaccessible from
+the public source checkout and are not public downloads):
 
 - [Original worker report](../results/raw/inkling-sm80-triton-tp4-20260913-174210.json)
 - [Controller and cleanup audit](../results/raw/inkling-sm80-triton-tp4-20260913-174210-controller.json)
@@ -100,7 +108,7 @@ including the new offline-diagnostic regression. Ruff and formatting checks pass
 runtime-support port copies the old loader helpers verbatim and is AST-checked;
 parent hashes and all transfer hashes fail closed on drift.
 
-## Current execution status
+## Historical execution status (2026-09-13)
 
 The user explicitly approved uploading the allowlisted code/configuration
 bundle to the exact existing bucket/prefix above and proceeding with the

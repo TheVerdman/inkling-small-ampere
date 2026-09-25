@@ -1,6 +1,21 @@
 # Project status
 
-Last verified: 2026-08-12 (offline mechanistic platform validation)
+Documentation status refreshed: 2026-09-24. The historical record below ends
+with the 2026-08-12 offline mechanistic validation; its cloud inventories and
+authorization statements apply to those recorded runs, not current operations.
+
+Historical TP4 serving used vLLM `ffd46bfab2128bb84146050e98b51a617c6575ab`,
+patches 0001–0004, FlexAttention and Marlin on four A100 80GB GPUs. Gate D's
+original cloud comparison failed exact open-ended text matching; the later
+offline reconciliation used revised criteria. Gate E reached 239,997 actual
+input tokens, not a validated 256K request.
+
+The separate [Triton PR #55078](https://github.com/vllm-project/vllm/pull/55078)
+is open, reviewed and unmerged at `33c25ab75627d670eb90f084f2b3875145bcc06b`.
+Its September 14 TP1 synthetic A100 tests passed; the older TP4 numerical gate
+failed and current-head TP4 parity remains unvalidated. See
+[evidence identities and limitations](docs/known-limitations.md) for the exact
+heads, backends and scope. No hardware or cloud validation was rerun here.
 
 ## Executive state
 
